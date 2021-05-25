@@ -1,0 +1,539 @@
+---
+title: "Intro to tidyverse"
+output: 
+  learnr::tutorial:
+    progressive: true
+    allow_skip: true
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+knitr::opts_chunk$set(echo = FALSE)
+```
+Materials can be found on [github](https://github.com/cecusack/EATLab-R-rschdev.git)
+
+## packages
+
+The hashtag I use before "packages" above is to use the outline feature of RStudio. This makes it easy to navigate a document, as they get long quickly!  
+
+Before we get started, let's just make sure we all have the same packages. We're focusing on tidyverse, but I generally upload all of these at once with every markdown because I frequently use them all together.  
+
+If you do not have a package, install them in your console using `>install.packages("nameofpackage")`  
+Then come back up to this code chunk and upload them.
+
+```{r message=FALSE, warning=FALSE}
+# update.packages("tidyverse") # tidyverse changes all the time. make sure you have the most recent version
+library(tidyverse) # for life, for data cleaning. This is a suite that includes packages like dplyr (manipulate data), purrrr (for functions and datasets--sometimes faster/better than apply/sappy), forcats (categorical variables), ggplot2 (that good good vis), lubridate (dates and time variables), etc.
+library(psych) # for the describe() function. It's like a better version of base R's summary. I use this for checking values of variables.
+library(sjmisc) # to move multiple columns at once. you'll notice places i use dplyr::relocate vs sjmisc::move_columns. However, they essentially do the same thing
+```
+
+<figure align = "left">
+    <img src='https://hbctraining.github.io/Intro-to-R/img/tidyverse_website.png' style="width:400px;height:300px;"/>
+    <font size="2">
+    </font>
+</figure>
+
+## import data
+
+to import data, first name the dataset something meaningful. The point the file toward it. I use the `<-` operator instead of `=` so I don't get confused with math happening. That said, both work. The function `read.csv()` can have many arguments. I use the following arguments: "filename.csv", header, sep, na.strings, stringsAsFactors.  
+
+**A.** setting `header = TRUE` tells R to read the top row as a header instead of an observation or participant.  
+**B.** the `sep = ","` argument tells R to read the csv commas to make rows/columns  
+**C.** you can specify missing values strings. I just place several here using the concatenate function, `c()`, to try to cover my bases.   
+**D.** `stringsAsFactors = FALSE` for text strings. These are not meaningful factor levels like we would see on a likert-type scale. If you don't specify, R will assign each unique character string to a factor level.  
+
+**Note:** if the Rmarkdown is not saved in the same folder as the data, you will need to write the absolute file path. You can find this by running `file.choose()` and navigating to the file on your computer. Once you click on the file you want, R will place the file path in the console.
+
+```{r}
+# import raw dataset
+PDB_SR_raw <- read.csv("PDB SR clean unscored.csv", header = TRUE, sep = ",", na.strings=c("", "NA", "N/A", "n/a", "N/a", "-99"), stringsAsFactors=FALSE)
+
+# It's good practice to leave raw data alone and make a copy of the dataframe you will be cleaning on. This is to make sure you always have your raw data in case you make mistakes. In the line below, make a direct copy of the data that you will be working on. I like to specify names as raw and clean
+PDB_SR <- PDB_SR_raw
+
+# NOTE: if I'm trying code that I'm not sure will run/run how I want it to, I point the data to a test dataframe, so like test <- PDB_SR 
+
+# look in your global environment, you should see two identical dataframes with 143 observations and 462 variables. Let's get an idea of what it looks like 
+head(PDB_SR)
+# to see all data and not just first few rows, use View(PDB_SR)
+```
+
+Tidyverse is the dreamy library you want to live in when you're wrangling data. [For help, here is a link of various cheatsheets](https://www.rstudio.com/resources/cheatsheets/).  
+
+<figure align = "center">
+    <img src='https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Hadley-wickham2016-02-04.jpg/440px-Hadley-wickham2016-02-04.jpg' style="width:200px;height:350px;"/>
+    <font size="2">
+    <figcaption> Hadley Wickham, dream boat 
+    </figcaption>
+    </font>
+</figure>
+
+Some of the functions you'll use over and over again include:  
+
+`select()`: select variables in data. often used with `starts_with`, `ends_with`, `contains`. It's a kinder way to find them than regular expressions, as seen on line 105   
+`filter()`: find columns/rows with a certain condition  
+`summarise()` : get descriptive statistics  
+`group_by()` : subset  
+`arrange()`: sort ascending/descending  
+`rename()`: name variables meaningfully  
+`mutate()`: manipulate variables. score measures!   
+
+One of the things that makes tidyverse great is you don't have to repeatedly type the dataset over and over again because you "pipe" it into a function. Pipes look like this `%>%`. What it does it takes the object before the pipe and feeds it into the next step. The hot key for typing pipes on mac is shift+command+m  
+
+Reminder: TidyVerse is super active and developing daily. USE THE MOST RECENT. functions get deprecated
+
+## select
+
+Let's start with select. Select finds columns. We usually have really wide datasets because our participants complete lots of measures. You may just want to look at a few at a time. We can select the variables we care about.
+```{r}
+# So on line 64, we took a look at our data. What if you just wanted to get an idea of what panas data look like
+
+PDB_SR %>% # look our first pipe! We're piping in PDB_SR into the function select
+  select(starts_with("panas"))
+
+# if we didn't use pipes, it would look like this
+select(PDB_SR, starts_with("panas")) # while this doesn't look much different than the first way, when your code gets more complicated or when you're using ggplot, it comes in handy. Trust me on this/we'll see shortly when we combine functions.
+
+# so you could also do this with regular expressions as seen below
+PDB_SR[, grep("^panas", colnames(PDB_SR))] # so lines 98-105 do the same thing, but the first one is much easier to read and more flexible. This is a reason we like tidyverse. Happy to speak further on why you would want to use regular expressions approach instead of tidyverse
+```
+
+### Exercise 1: select the ders columns
+
+```{r select, exercise = TRUE}
+
+```
+
+```{r select-solution}
+PDB_SR %>% # look our first pipe! We're piping in PDB_SR into the function select
+  select(starts_with("ders"))
+```
+
+## filter
+
+okay, let's say you want to see the data for people who are over age 30. Why? who knows, this is just an example. Something we may see later is filtering people by EDE-Q above a cut-off score.
+
+```{r}
+PDB_SR %>% 
+  filter(age > 30) # we see 5 people are over 30
+
+# if we wanted to capture these people in their own dataframe, we would just point this to a new object
+overthirty <- PDB_SR %>% 
+  filter(age > 30)
+# okay but we don't actually care, so let's remove this from our global environment. We do this with `rm()`
+rm(overthirty)
+```
+
+### Exercise 2: Filter people who are under 20
+
+```{r filter, exercise = TRUE}
+
+```
+<div id="filter-hint">
+**Hint:** Check your greater than/less than sign.
+</div>
+```{r filter-solution}
+PDB_SR %>% 
+  filter(age < 20)
+```
+
+```{r}
+# if you want to filter people based on an exact condition, used the double equal sign ==
+# below, I filter people who are exactly 18
+PDB_SR %>% 
+  filter(age == 18)
+
+# you could also do this with categorical variables. if you do this with categorical variables, the names need to be in quotations. PDB_SR %>% filter(sexuality=="heterosexual"). we won't do this here, because we don't have levels named.
+
+# you can also use select and filter together! For instance, what if you only wanted to see panas data for people over 30
+PDB_SR %>% 
+  filter(age > 30) %>% 
+  select(starts_with("panas"))
+
+```
+
+### Exercise 3: Filter participants who are under 20 and look at the ders data.
+```{r filterselect, exercise = TRUE}
+
+```
+<div id="filter select-hint">
+**Hint:** Start with the filter function then pipe it into select function.
+</div>
+```{r filterselect-solution}
+PDB_SR %>% 
+  filter(age < 20) %>% 
+  select(starts_with("ders"))
+```
+
+## summarise
+
+You need to report demos. how do we do that easily?
+```{r}
+PDB_SR %>% 
+  summarise(mean(age), sd(age), min(age), max(age))
+
+# however, this is where I think tidyverse is lacking and the psych package we uploaded on line 33 really shines
+# the psych package, has a describe function that's quite handy. See below
+describe(PDB_SR$age) # get same info with less typing! Less typing, fewer mistakes
+
+# when I'm cleaning, I use this for checking for plausible values. If the minimum is something not plausible, then I would use filter to find them and see what to do. For instance, let's say this had to be an adult sample, I would want to filter the people who wrote 17 and see if this was a typo or something. I would then remove them or replace the age with the correct value. This more typically happens in ht/wt cols where participants type weight in height and height in the weight box.
+
+# let's visualize age
+ggplot(PDB_SR, aes(x=age)) + geom_boxplot() # box plot is good for visualizing outliers
+
+# anyway back to tidyverse. We can use summarise with filter! What if you want the mean height for people under 30?
+PDB_SR %>% 
+  filter(age < 30) %>% # find participants under 30
+  summarize(height = mean(height)) # then take the mean of their heights
+```
+
+### Exercise 4: Get the median weight of people over 30
+
+(Use tidyverse's summarise or psych's describe)
+```{r summarise, exercise = TRUE}
+# now get median weight of people over 30 
+
+```
+
+```{r summarise-solution}
+PDB_SR %>% 
+  filter(age < 30) %>% # find participants under 30
+  summarize(weight = median(weight)) 
+```
+
+
+```{r}
+# another way to summarize data is by using Base R's `table()` function. This is good for categorical variables.
+
+# If you wanted a count for how people identified their sexuality, you could call 
+table(PDB_SR$sexuality) # gives you a count
+
+# but this doesn't include NAs. You probably want to know how many people didn't respond. so use the argument useNA
+table(PDB_SR$sexuality, useNA = "ifany")
+
+# see it as a proportion
+prop.table(table(PDB_SR$sexuality, useNA = "ifany"))
+```
+
+## group_by
+
+Let's say you wanted to run analyses on sexes separately
+```{r}
+# continuing with our age under 30 and height example, I filter the people under 30, group them by sex, and summarize their height
+PDB_SR %>% 
+  filter(age < 30) %>% 
+  group_by(sex) %>% # get summary data by a categorical variable
+  summarize(height = mean(height))
+
+# visualize this
+PDB_SR %>%
+  filter(age < 30) %>%
+  group_by(sex) %>%
+  summarize(height = mean(height)) %>%
+  ggplot(., aes(x = sex, y = height)) + geom_point() # the dot saves the object piped in. when we visualized age above we had >ggplot(PDB_SR, aes(x=age)) + geom_boxplot() Because we piped PDB_SR into gg in line 210, we don't have to PDB_SR again into ggplot, and instead we just use the dot. 
+
+
+# huh, this plot is kind of weird because it has sex as an integer. sex 1.5 doesn't make sense. let's check the class using the str() function
+str(PDB_SR$sex) # integer. nope, it should be a factor. let's make sex a factor in the line below
+PDB_SR$sex <- as.factor(PDB_SR$sex) # check by running line above again. Let's look at our visualization again from line 210-214
+
+# you can also do this without filtering by age
+PDB_SR %>% 
+  group_by(sex) %>% 
+  summarize(height = mean(height))
+
+# let's say you wanted to see if height had a normal curve without grouping by sex. This is ugly, but it serves the point of seeing a distribution. I think y'all are doing pretty gg later :)
+PDB_SR %>%
+  ggplot(., aes(x = height)) + 
+  geom_density(aes(y = ..count..), fill = "lightgray") +
+  geom_vline(aes(xintercept = mean(height)), 
+             linetype = "dashed", size = 0.6,
+             color = "#FC4E07")
+```
+
+### Exercise 5a: summarize the mean weight by people by sex
+
+```{r groupby, exercise = TRUE}
+
+```
+
+```{r groupby-solution}
+PDB_SR %>% 
+  group_by(sex) %>% 
+  summarize(weight = mean(weight))
+```
+
+### Exercise 5b: visualize weight of the entire sample (e.g., adapt lines 227-232)
+
+```{r visualize, exercise = TRUE}
+
+
+```
+<div id="filter-hint">
+**Hint:** pipe your dataframe into ggplot and update your aesthetics arguments.
+</div>
+```{r visualize-solution}
+PDB_SR %>%
+  ggplot(., aes(x = weight)) + 
+  geom_density(aes(y = ..count..), fill = "lightgray") +
+  geom_vline(aes(xintercept = mean(weight)), 
+             linetype = "dashed", size = 0.6,
+             color = "#FC4E07")
+```
+
+## arrange
+
+What if you want to order people by something? It looks like Rowan has already nicely sorted the IDs in ascending order. What if for some bizarre reason we wanted them in descending order
+```{r}
+PDB_SR %>% arrange(desc(id))
+
+# arrange defaults to ascending order
+PDB_SR %>% arrange(age)
+```
+
+### Exercise 6: arrange the dataframe in descending order by height.
+if you want to save it point the dataframe to itself or a new object
+
+```{r arrange, exercise = TRUE}
+
+
+```
+
+```{r arrange-solution}
+PDB_SR %>% arrange(desc(height))
+```
+
+## rename
+
+Rowan's variables are nicely named. I wrote the general code below in case you need to rename variables. You could try renaming things with my fake data, also see intro to cleaning markdown. To rename several at a time, just place a comma after. so it would be like:  
+
+`data <- data %>% rename(newname = oldname, newname2 = oldname2, etc.)`
+
+```{r}
+# PDB_SR <- PDB_SR %>%
+#   rename(
+#     newname = oldname
+#   )
+```
+
+## mutate
+
+Let's score some measures! My other markdown intro to cleaning has more examples. I'm going to start with one example using the ders  
+
+* **Difficulty in Emotion Regulation Scale**: DERS  
+* **Items:** 36  
+* **Scale:** 1-5 (almost never – almost always)  
+* **Subscales:**  
+    + *Nonacceptance of emotional responses (NONACCEPT)*: 11, 12, 21, 23, 25, 29  
+    + *Difficulty engaging in goal-directed behavior (GOALS)*: 13, 18, 20R, 26, 33  
+    + *Impulse control difficulties (IMPULSE)*: 3, 14, 19, 24R, 27, 32  
+    + *Lack of emotion awareness (AWARENESS)*: 2R, 6R, 8R, 10R, 17R, 34R  
+    + *Limited access to emotion regulation strategies (STRATEGIES)*: 15, 16, 22R, 28, 30, 31, 35, 36  
+    + *Lack of emotional clarity (CLARITY)*: 1R, 4, 5, 7R, 9  
+
+**Scoring instructions:** Sum items for each subscale. Sum all items for total score.  
+**Other notes:** Reverse scoring is done by placing a subtraction sign in front of them   
+
+### reverse code
+
+the recode function first takes the column you want to recode. Then the old level = new level. Here old levels are integers, which is why they have tick marks around them. I know this from running line 303 I recode this into the new column. Otherwise, it will rewrite the old column
+```{r}
+# first check the structure
+str(PDB_SR[,grep("^ders", colnames(PDB_SR))]) # integers. okay
+# next, check the scale. the ders is on a 1-5 scale
+describe(PDB_SR[,grep("^ders", colnames(PDB_SR))]) # 1-5 scale good
+
+PDB_SR <- PDB_SR %>%
+  mutate(ders_1r = dplyr::recode(ders_1, `1`=-1, `2`=-2, `3`=-3, `4`=-4, `5`=-5))  %>%  
+  mutate(ders_2r = dplyr::recode(ders_2, `1`=-1, `2`=-2, `3`=-3, `4`=-4, `5`=-5)) %>%
+  mutate(ders_6r = dplyr::recode(ders_6, `1`=-1, `2`=-2, `3`=-3, `4`=-4, `5`=-5)) %>%
+  mutate(ders_7r = dplyr::recode(ders_7, `1`=-1, `2`=-2, `3`=-3, `4`=-4, `5`=-5)) %>%
+  mutate(ders_8r = dplyr::recode(ders_8, `1`=-1, `2`=-2, `3`=-3, `4`=-4, `5`=-5)) %>%
+  mutate(ders_10r = dplyr::recode(ders_10, `1`=-1, `2`=-2, `3`=-3, `4`=-4, `5`=-5)) %>%
+  mutate(ders_17r = dplyr::recode(ders_17, `1`=-1, `2`=-2, `3`=-3, `4`=-4, `5`=-5)) %>%
+  mutate(ders_20r = dplyr::recode(ders_20, `1`=-1, `2`=-2, `3`=-3, `4`=-4, `5`=-5)) %>%
+  mutate(ders_22r = dplyr::recode(ders_22, `1`=-1, `2`=-2, `3`=-3, `4`=-4, `5`=-5)) %>%
+  mutate(ders_24r = dplyr::recode(ders_24, `1`=-1, `2`=-2, `3`=-3, `4`=-4, `5`=-5)) %>%
+  mutate(ders_34r = dplyr::recode(ders_34, `1`=-1, `2`=-2, `3`=-3, `4`=-4, `5`=-5))
+
+# relocate
+PDB_SR <- PDB_SR %>% 
+  relocate(ders_1r, .after = ders_1) %>% 
+  relocate(ders_2r, .after = ders_2) %>% 
+  relocate(ders_6r, .after = ders_6) %>% 
+  relocate(ders_7r, .after = ders_7) %>% 
+  relocate(ders_8r, .after = ders_8) %>% 
+  relocate(ders_10r, .after = ders_10) %>% 
+  relocate(ders_17r, .after = ders_17) %>% 
+  relocate(ders_20r, .after = ders_20) %>% 
+  relocate(ders_22r, .after = ders_22) %>% 
+  relocate(ders_24r, .after = ders_24) %>% 
+  relocate(ders_34r, .after = ders_34)
+
+# see it, get a sense that it's working
+PDB_SR %>% 
+  dplyr::select(starts_with("ders"))
+
+```
+
+### score
+```{r}
+# nonacceptance of emotional responses items 11, 12, 21, 23, 25, 29
+PDB_SR <- PDB_SR %>%
+  mutate(DERS_nonaccept = rowSums(select(., c(ders_11, ders_12, ders_21, ders_23, ders_25,
+ders_29)), na.rm = TRUE)* ifelse(rowSums(is.na(select(., c(ders_11, ders_12, ders_21,
+ders_23, ders_25, ders_29)))) == ncol(select(., c(ders_11, ders_12, ders_21, ders_23, ders_25, ders_29))), NA, 1))
+
+# check plausible values. 6 items, max is 30
+describe(PDB_SR$DERS_nonaccept) # min = 6, max = 25. yay
+
+# if you had an implausible value, what I would first do is see if there is missing data in the columns you used
+tally(PDB_SR[rowSums(is.na(PDB_SR[c("ders_11", "ders_12", "ders_21", "ders_23", "ders_25",
+"ders_29")])),])
+# I'd then filter the by the implausible value and only look at the columns of interest. let's say 6 is implausible (it isn't), I'd find the people who had that score and then select the ders columns. if they have missing data, that's why the value is what it is. this is because i have na.rm = TRUE. if you only wanted to create scores for people with complete data, you would say na.rm = FALSE. and then delete everything after ...na.rm = FALSE). 
+PDB_SR %>% 
+  filter(DERS_nonaccept == 6) %>% 
+  select(., ders_11, ders_12, ders_21, ders_23, ders_25, ders_29, DERS_nonaccept)
+```
+
+### Exercise 7: Finish the DERS subscales
+
+```{r mutate, exercise = TRUE}
+# difficulty engaging in goal-directed behavior items 13, 18, 20r, 26, 33. name it DERS_goals if you want the move_columns fx to work. otherwise, change the move_columns to match your variable names
+
+
+# check plausible values.
+
+
+
+# impulse control difficulties items 3, 14, 19, 24r, 27, 32. name it DERS_impulse if you want the move_columns fx to work
+
+
+# check plausible values
+
+
+# lack of emotion awareness items 2r, 6r, 8r, 10r, 17r, 34r. name it DERS_awareness if you want the move_columns fx to work
+
+
+# check plausible values
+
+
+# limited access to emotion regulation strategies items 15, 16, 22r, 28, 30, 31, 35, 36. name it DERS_strategies if you want the move_columns fx to work
+
+
+# check plausible values
+
+
+# lack of emotional clarity items 1r, 4, 5, 7r, 9. name it DERS_clarity if you want the move_columns fx to work
+
+
+# check plausible values
+
+
+# total. add subscales. name it DERS_total if you want the move_columns fx to work
+
+
+# check plausible values
+
+
+# relocate
+# PDB_SR <- PDB_SR %>%
+#   sjmisc::move_columns("DERS_nonaccept", "DERS_goals", "DERS_impulse", "DERS_awareness", "DERS_strategies", "DERS_clarity", "DERS_total", .after = ders_36)
+```
+
+```{r mutate-solution}
+# difficulty engaging in goal-directed behavior items 13, 18, 20r, 26, 33. name it DERS_goals if you want the move_columns fx to work. otherwise, change the move_columns to match your variable names
+PDB_SR <- PDB_SR %>%
+  mutate(DERS_goals = rowSums(select(., c(ders_13, ders_18, ders_20r, ders_26, ders_33)), na.rm = TRUE)* ifelse(rowSums(is.na(select(., c(ders_13, ders_18, ders_20r, ders_26, ders_33)))) == ncol(select(., c(ders_13, ders_18, ders_20r, ders_26, ders_33))), NA, 1))
+
+# check plausible values.
+describe(PDB_SR$DERS_goals)
+
+
+# impulse control difficulties items 3, 14, 19, 24r, 27, 32. name it DERS_impulse if you want the move_columns fx to work
+PDB_SR <- PDB_SR %>%
+  mutate(DERS_impulse = rowSums(select(., c(ders_3, ders_14, ders_19, ders_24r, ders_27, ders_32)), na.rm = TRUE)* ifelse(rowSums(is.na(select(., c(ders_3, ders_14, ders_19, ders_24r, ders_27, ders_32)))) == ncol(select(., c(ders_3, ders_14, ders_19, ders_24r, ders_27, ders_32))), NA, 1))
+
+# check plausible values.
+describe(PDB_SR$DERS_impulse)
+
+# lack of emotion awareness items 2r, 6r, 8r, 10r, 17r, 34r. name it DERS_awareness if you want the move_columns fx to work
+PDB_SR <- PDB_SR %>%
+  mutate(DERS_awareness = rowSums(select(., c(ders_2r, ders_6r, ders_8r, ders_10r, ders_17r, ders_34r)), na.rm = TRUE)* ifelse(rowSums(is.na(select(., c(ders_2r, ders_6r, ders_8r, ders_10r, ders_17r, ders_34r)))) == ncol(select(., c(ders_2r, ders_6r, ders_8r, ders_10r, ders_17r, ders_34r))), NA, 1))
+
+# check plausible values.
+describe(PDB_SR$DERS_awareness)
+
+
+# limited access to emotion regulation strategies items 15, 16, 22r, 28, 30, 31, 35, 36. name it DERS_strategies if you want the move_columns fx to work
+PDB_SR <- PDB_SR %>%
+  mutate(DERS_strategies = rowSums(select(., c(ders_15, ders_16, ders_22r, ders_18, ders_30, ders_31, ders_35, ders_36)), na.rm = TRUE)* ifelse(rowSums(is.na(select(., c(ders_15, ders_16, ders_22r, ders_18, ders_30, ders_31, ders_35, ders_36)))) == ncol(select(., c(ders_15, ders_16, ders_22r, ders_18, ders_30, ders_31, ders_35, ders_36))), NA, 1))
+
+# check plausible values.
+describe(PDB_SR$DERS_strategies)
+
+
+# lack of emotional clarity items 1r, 4, 5, 7r, 9. name it DERS_clarity if you want the move_columns fx to work
+PDB_SR <- PDB_SR %>%
+  mutate(DERS_clarity = rowSums(select(., c(ders_1r, ders_4, ders_5, ders_7r, ders_9)), na.rm = TRUE)* ifelse(rowSums(is.na(select(., c(ders_1r, ders_4, ders_5, ders_7r, ders_9)))) == ncol(select(., c(ders_1r, ders_4, ders_5, ders_7r, ders_9))), NA, 1))
+
+# check plausible values.
+describe(PDB_SR$DERS_clarity)
+
+
+# total. add subscales. name it DERS_total if you want the move_columns fx to work
+PDB_SR <- PDB_SR %>%
+  mutate(DERS_total = rowSums(select(., c(DERS_nonaccept, DERS_goals, DERS_impulse, DERS_awareness, DERS_strategies, DERS_clarity)), na.rm = TRUE)* ifelse(rowSums(is.na(select(., c(DERS_nonaccept, DERS_goals, DERS_impulse, DERS_awareness, DERS_strategies, DERS_clarity)))) == ncol(select(., c(DERS_nonaccept, DERS_goals, DERS_impulse, DERS_awareness, DERS_strategies, DERS_clarity))), NA, 1))
+
+# check plausible values.
+describe(PDB_SR$DERS_total)
+
+
+# relocate
+PDB_SR <- PDB_SR %>%
+   sjmisc::move_columns("DERS_nonaccept", "DERS_goals", "DERS_impulse", "DERS_awareness", "DERS_strategies", "DERS_clarity", "DERS_total", .after = ders_36)
+```
+
+## BDI
+
+* BDI is a fun one because it's simple to score.  
+* this one has 21 items **(clinical)**  
+* Scale: 0-3  
+* Items 16 and 18 are on a 0-6 scale and need to be recoded as follows: (0=0, 1=1, 2=1, 3=2, 4=2, 5=3, 6=3)  
+* The sum all items for total score
+```{r}
+str(PDB_SR[,grep("^bdi", colnames(PDB_SR))]) # integers. okay
+describe(PDB_SR[,grep("^bdi", colnames(PDB_SR))]) # 0-3 scale except 16 and 18 0-6
+
+# recode item 16 and 18. Notice: introducing a new mutate! instead of mutate(), we're using mutate_at(). You could revalue bdi 16 and 18 like you did the ders. Just showing another option for flexibility. CAREFUL: mutate_at replaces columns. when we revalued the ders we pointed them to new columns specified with _r at the end of variable names to denote they've been recoded. mutate_at does not.
+
+PDB_SR <- PDB_SR %>%
+  mutate_at(vars(bdi_16, bdi_18), ~recode(.,`0`=0, `1`=1, `2`=1, `3`=2, `4`=2, `5`=3, `6`=3))
+
+# Sum total scale score
+PDB_SR <- PDB_SR %>%
+  mutate(bdi_total = rowSums(dplyr::select(., starts_with("bdi_")), na.rm = TRUE)* ifelse(rowSums(is.na(dplyr::select(., starts_with("bdi_")))) == ncol(dplyr::select(., starts_with("bdi_"))), NA, 1))
+
+# check plausible values max = 63
+describe(PDB_SR$bdi_total) # max = 51
+
+# move after last item
+PDB_SR <- PDB_SR %>% 
+  relocate(bdi_total, .after = bdi_21)
+```
+
+## save
+```{r}
+name= 'PDB SR clean scored_'
+filetype= '.csv'
+filename= paste(name, Sys.Date(), filetype, sep='')
+
+write.csv(PDB_SR,file=filename, row.names = FALSE)
+```
+
+## save spss
+```{r}
+haven::write_sav(PDB_SR, "PDB SR clean scored_05262021.sav")
+```
