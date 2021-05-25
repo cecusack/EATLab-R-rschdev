@@ -16,7 +16,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
-Materials can be found on [github](https://github.com/cecusack/EATLAB-R-learning)
+Materials can be found on [github](https://github.com/cecusack/EATLab-R-rschdev.git)
 
 # packages
 
