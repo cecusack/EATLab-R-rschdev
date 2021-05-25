@@ -1,0 +1,261 @@
+---
+title: "Merging Multiply Imputations"
+author: "CCusack"
+date: "3/12/2021"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 6
+    toc_float: true
+    number_sections: true
+    code_folding: hide
+    theme: cosmo
+    df_print: paged
+    
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = T, results = 'hold', warning=F, message=F)
+```
+
+So we have code that imputes missing values using Van Bureen's MICE package. The problem is we have 5 imputed data sets and we need to merge them into one rather than using a random number generator to pick one the imputed datasets.
+
+
+# Packages
+
+In this chunk, I upload the packages I need. If you do not have these packages, install them with install.packages("nameofpackage") in the console. then upload them using the library(nameofpackage) like below in the code chunk.
+```{r include=T, echo=T, warning=F, message=F}
+
+library(tidyverse) # for life, for data cleaning. This is a suite that includes packages like dplyr, tidyverse, purrrr, forcats, ggplot2, etc. I don't know if we need tidyverse but I always upload because it's just that good.
+library(ggplot2) # data visualization. Part of tidyverse. Just in case.
+library(devtools) # has dependencies needed for other packages.
+library(mice) # for predictive mean matching
+library(VIM) # VIM: Visualization and Imputation of Missing Values
+library(sjmisc) # this is for the merge_imputation function
+```
+
+# Set up
+
+Before you do anything else, save this markdown in the same folder data are stored.
+```{r }
+
+# the name of the data in csv is entered first. This should be in the same folder as your now saved R markdown. If you haven't saved it, SAVE IT. Otherwise, line won't run and you need to include the file path (e.g., something like what's written in the sample mice code). that said, if for some odd reason you need to find the file path, you can do so by running > file.choose(). Then copy the output in the console and replace "data for NA.csv" with the output from file.choose()
+
+# import raw dataset. "data for NA.csv" will change to whatever data your bringing in. Otherwise, nothing else needs to be updated.
+data <- read.csv("data for NA.csv", header = TRUE, sep = ",", na.strings=c("", "NA", "N/A", "n/a", "N/a", "-99", StringsAsFactors=FALSE))
+
+# How to understand line above: the first argument is the file name. Setting header = TRUE, tells R to read the top row as a header instead of an observation/participant. The sep argument = "," is for csv so R knows how to read commas and make rows/columns. na.strings is a list of possible ways that people may write missing values. It tells R that a blank, NA, N/A, n/a, -99 are all missing data
+
+
+# I usually make another copy that I'm working on so that raw data are always untouched. However, I'm not doing anything with raw data so I am not doing this. If for some reason you want to, or anticipate other data cleaning/wrangling, save raw data as another name running something like > data_clean <- data
+```
+
+# Missing data pattern
+
+The function md.pattern is part of the mice package and is used to display missing data patterns. it's useful for looking at the structure of missing observations within the data. If you see something weird, it could give direction on specific variables to impute
+```{r}
+md.pattern(data)
+
+# note: it's easier to interpret md.pattern when there are fewer columns
+# how to read the output: blue squares are observed values and pink are missing values.
+# this looks like it is a general pattern of missingness as opposed to monotone (not connected; something you'd expect to see with dropout in longitudinal data) or connected (if any observed data point can be reached from any other observed data point through a sequence of horizontal or vertical moves (like the rook in chess).
+
+# if you set plot = FALSE, you get a table with frequencies of missing data patterns, where 1 = observed, and 0 = missing
+md.pattern(data, plot = FALSE)
+
+# the first column on the left provides the frequency of patterns
+# for instance, we have 184 complete observations. Note these numbers are from the example run through in grad lab mtg 3/26/2021
+
+#  The last column lists the number of missing entries per pattern 
+# this shows up as 0 missing entries on the right because it's complete
+
+# The bottom row provides the number of missing entries per variable, and the total number of missing cells
+# there is no missing data for fasting, but 4 missing cells/observations for ashamed
+```
+
+# Impute missing values
+
+```{r}
+# this looks the same as what we've been doing. I am saving the imputed data as data_imputed (this is a mids object, not a df) using the mice function on data, 5 multiple imputations, with the method predictive mean matching
+# m = 5 may change based on how much missing data you have. Look at the literature to determine if 5 needs to change. These articles exist in dropbox -> U of L -> R Training Materials
+data_imputed <- mice(data, m=5, meth=c("pmm"))
+
+# look at it
+summary(data_imputed) 
+# here you can see pmm was used for variables binge, desirelose, seeeat, etc. 
+# variables with complete observations were: fasting, foodrules, foodconc, loc, flatstomach, feargain, feelfat, EDguilty, weightjudge, othersee. 
+# I know this from the table and the bottom row of the output table (all = 0), so there was no reason to impute. 
+# let's say you don't trust it
+# first I want to make sure these 10 columns are indeed complete
+sapply(data, function(x) sum(is.na(x))) # the table provides you with the number of observations missing for each variable
+
+## this check out, if you remember > md.pattern(data, plot = FALSE) in the code chunk above that had 0's on the bottom line, indicated no missing entries. For future use of this code, line 90 should match line 64, bottom row of table
+
+# view it
+densityplot(data_imputed) # red lines are the 5 imputations. blue lines are observed. ideally we want these align. We see some imputations are better than others. 
+
+# visualize one variable at a time
+densityplot(data_imputed, ~hostile) # view overlayed in one image, I chose to examine hostile but you can replace this with any variable. Seeing how well imputations (red lines) fit original (blue).
+densityplot(data_imputed, ~ hostile | .imp) # view imputations and original separately
+
+stripplot(data_imputed, pch = 20, cex = 1.2) # i expanded this and saw that the imputed values are lining up with the observed values. looks okay
+```
+
+# Merge imputations
+
+5 mult imps into one data frame.
+See https://strengejacke.github.io/sjmisc/reference/merge_imputations.html for more info.
+
+This function merges multiple imputed data frames from mice::mids()-objects into a single data frame by computing the mean or selecting the most likely imputed value. You can read more the sjmisc cran pp. 38-39 https://cran.r-project.org/web/packages/sjmisc/sjmisc.pdf
+
+The ori argument on line 119 looks a little hairy. Here's the gist of what's happening. I'm saying if there were variables that did not need to be imputed (i.e., they were complete as seen in line 90), attach the imputed data to the complete data. Else, if all variables had values that needed to be imputed, carry on as normal. Why did I do this? Without specifying ori, this function will drop columns that did not need to be imputed. There's a more intuitive, user-friendly way to write this, but it isn't reproducible, so here we are.
+
+```{r}
+# now let's get these all together. One way is to pool() however, this function does not work with network models, which is why we're using sjmisc::merge_imputations() instead.
+
+data_merged<-merge_imputations(
+  data, 
+  data_imputed, 
+  ori = if (sapply(data, function(x) sum(is.na(x))) == 0) { data[,colnames(data)[sapply(data, function(x) sum(is.na(x))) == 0]]} else {NULL},
+  summary = c("none", "dens", "hist", "sd"), 
+  filter = NULL 
+)
+
+# check what it looks like
+head(data_merged)
+# make sure there are no missing now that we've imputed
+md.pattern(data_merged) # check visually. expecting blue squares
+sapply(data_merged, function(x) sum(is.na(x))) # check numerically. I trust R more than my eyes to detect missingness. expecting variable names with all 0's
+```
+
+## more vis if you care
+```{r}
+# see as density plot 
+# shows the distribution of the mean of the imputed values for each variable at each observation. The larger the areas overlap, the better is the fit of the merged value compared to the imputed value.
+merge_imputations(
+  data,
+  data_imputed,
+  ori = NULL,
+  summary = "dens",
+  filter = NULL
+)
+
+# visualize as histogram
+# Similar to summary = "dens", however, mean and merged values are shown as histogram. Bins should have almost equal height for both groups (mean and merged).
+merge_imputations(
+  data,
+  data_imputed,
+  ori = NULL,
+  summary = "hist",
+  filter = NULL
+)
+
+# sd
+# Creates a dot plot, where data points indicate the standard deviation for all imputed values (y-axis) at each merged value (x-axis) for all imputed variables. The higher the standard deviation, the less precise is the imputation, and hence the merged value.
+merge_imputations(
+  data,
+  data_imputed,
+  ori = NULL,
+  summary = "sd",
+  filter = NULL
+)
+
+```
+
+# Fix Order and match
+
+when you view(data_merged) or head(data_merged), you can see our order is not the same as original. Also note that because we imputed some variables and attached them to original data that did not need to be imputed, R specified variables that were imputed by adding _imp at the end of variable names.
+
+In the chunk below, I'm going get rid of the _imp and reorder variables in the merged dataset to match original order. 
+```{r}
+# get rid of _imp in var names that were imputed. This is not necessary if all needed to be imputed
+names(data_merged) <- sub("_imp$", "", names(data_merged)) 
+# this code reads as save the variable names in the dataframe data_merged <- by substituting (sub) the names of the _imp in at the end ($) of variables names within the dataframe data_merged with nothing (""). 
+# you could replace _imp endings with anything really by typing what you want inside the "". By leaving it blank inside the quotations, you're just removing the text. for instance, I could say sub("_imp$", "_new", names(data_merged)) and then we'd have variable names like hostile_new etc.
+
+# apply the original order to the merged data. Also not necessary if all variables needed to be imputed.
+data_merged <- data_merged %>% select(colnames(data))
+
+# check
+head(data_merged)
+```
+
+# Save
+```{r}
+name= 'imputed data for NA' # rename this something meaningful
+filetype= '.csv'
+filename= paste(name, Sys.Date(), filetype, sep='') # Sys.Date will add the date you saved the imputations. you can remove this argument if you don't care about the date or if you don't want it for reference later.
+
+write.csv(data_merged,file=filename, row.names = FALSE)
+```
+
+# pool
+
+Alright so there were questions on the pool function and what it does. It is a way to combine the multiple imputations and estimating a model using all of the imputations.
+
+as mentioned in the merge_imputations, "Typically, further analyses are conducted on pooled results of multiple imputed data sets (see pool), however, sometimes (in social sciences) it is also feasible to compute the mean or mode of multiple imputed variables (see Burns et al. 2011)."
+
+https://stefvanbuuren.name/fimd/workflow.html
+
+This looks like 1) imputing values (line 205); 2) fitting your model (line 209) example uses a simple linear regression, but I imagine you can write whatever model here; and then 3) pooling the multiple imputations (215). This example uses a simple linear model. Not sure what other models it supports.
+
+
+```{r}
+# first impute values. 
+pool_test <- mice(data, m=5, meth=c("pmm"))
+
+
+# fit your model using the with function. 
+fit <- with(pool_test, lm(binge~fasting+loc+upset))
+# fit <- with(pool_test, insert model here. examples use lm and some random variables I chose. this will change based on the model you're estimating)
+# contains results of the fitting performed over the imputed datasets
+summary(fit)
+
+# pool the 5 imputations together and save estimates
+est<-summary(pool(fit))
+# look at it
+est
+
+```
+
+## compare pool with the merge imputations
+```{r}
+# using the data from the merged_imputations function above. already imputed.
+fit2<- with(data_merged, lm(binge~fasting+loc+upset))
+summary(fit2)
+
+# In looking at est (line 217) and > summary(fit2) (line 225), the numbers are a little different. could be expected because of the nature of pmm, could be because the math underlying the functions pool and merge_imputations are different. That said trends and significance are the same.
+
+#  bottom line: you need to choose whether to do the merge_imputations technique or the one that pools the model. It seems like a matter of order. do you want to aggregate first and then run your model or estimate your model first on all imputed datasets and then pool the imputations. based on the note from merge_imputations, I'd err on the side of using the pool chunk if it supports your model. If that's the case, you don't need to run code chunks "Impute missing values" through "Save". It would just look like packages, set up, missing data pattern, pool.
+```
+
+## does pool work with network models: Nope. 
+
+this is me playing around/showing process. It is not code necessary to run.
+```{r}
+ library(bootnet)
+# first trying with the imputed data.
+ fit<- with(dataset, model)
+
+ fit<- with(pool_test, estimateNetwork(pool_test, default="EBICglasso", corMethod = "cor", corArgs = list(method = "spearman", use = "pairwise.complete.obs")))
+# error: data must be a dataframe. # checks out because pool_test is saved as a mids.object. this happens when we run mice.
+
+# try again by organizing the mids object as a dataframe in long form.
+ data<-complete(pool_test, 'long') # this saves all the imputations in long format for each variable. we had 26 variables by 5 imputations = 980.
+ data<-data[,-c(1:2)] # cols we don't need for networks. it has the imputation number and assigned id numbers
+
+ network<- with(data, estimateNetwork(data, default="EBICglasso", corMethod = "cor", corArgs = list(method = "spearman", use = "pairwise.complete.obs")))
+
+ names1 <-names(data)
+
+ pdf("colornetwork2.pdf", width=15, height=15)
+ g1<-plot(network, labels=names1, layout="spring", vsize=6, cut=0, border.width=1.5, border.color="black", 
+        color=c('#6fa8dc'))
+ dev.off()
+
+
+ nettest<-summary(pool(network)) 
+# error: no tidy method recognized for this list. 
+# ugh this is because pool() relies on the object being a mids object, like what we get when we impute missing values. however, we needed to convert the imputed datasets (e.g., the mids object) back to a dataframe to fit the estimateNetworks arguments where data = a dataframe or matrix. So maybe go with the merge_imputations because I think estimating the network with all imputed datasets could possibly artificially inflate stability and other metrics sensitive to number of observations.
+```
+

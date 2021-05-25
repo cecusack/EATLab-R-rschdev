@@ -1,0 +1,708 @@
+---
+title: "Data cleaning work flow"
+author: "CCusack"
+date: "4/26/2021"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 6
+    toc_float: true
+    number_sections: true
+    code_folding: hide
+    theme: cosmo
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+I've adapted a markdown I made for training RAs. It's probably overcommented, with the hope that someone can read this, run with it, and adapt similar strategies to other demographics/measures. It's incomplete, but hopefully it will give you an idea on my work flow. Caveat: my work flow may not be the best work flow, and I consider myself a novice. I have a lot more cleaning code with problems that you'll see in real data that may not be present here, and I'm always happy to troubleshoot and/or share code! Also, if this isn't commented enough and you have questions, let me know and I'm happy to clarify.
+
+Note: this was made to make for easy navigation using the outline feature. Click the outline icon to the right of the publishing button (which is to the right of Run) to go to certain code chunks. Also, in making this, I used the adolescent maia and should have used adult, but you'll get the gist!
+
+# libraries
+
+Upload the packages I need. If you do not have these packages, install them with install.packages("nameofpackage") in the console. then upload them using the library(nameofpackage) like below in the code chunk.
+```{r}
+library(tidyverse) # for life, for data cleaning. This is a suite that includes packages like dplyr, purrrr, forcats, etc.
+library(ggplot2) # data visualization. Part of tidyverse
+library(devtools) # has dependencies needed for other packages
+library(measurements) # for fixing height
+library(psych) # for the describe() function. It's like a better version of base R's summary. I use this for checking values of variables.
+# library(lubridate) # for date/time var
+library(sjmisc) # to move multiple columns at once
+```
+
+# import data
+
+I note where and when I downloaded the data here. E.g., "Downloaded csv directly from redcap on 04/27/2021. Raw data can be found [insert file path]."
+
+It's helpful to save the markdown you're using to clean where the data are. This way you don't have to use absolute paths. However, if this is isn't possible, you can run `file.choose()` to find the file path (uncomment line 44).
+
+```{r}
+# file.choose()
+
+raw <- read.csv("fake data.csv", header = TRUE, sep = ",", na.strings=c("", "NA", "N/A", "n/a", "N/a", "-99", -99))
+
+# How to understand line 46: the first argument is the file name. Setting header = TRUE, tells R to read the top row as a header instead of an observation/participant. The sep argument = "," is for csv so R knows how to read commas and make rows/columns. na.strings is a list of possible ways that people may write missing values. It tells R that a blank, NA, N/A, n/a, -99 are all missing data
+
+# It's good practice to leave raw data alone and make a copy of the dataframe you will be cleaning on. This is to make sure you always have your raw data in case you make mistakes. In the line below, make a direct copy of the data that you will be working on. I like to specify names as raw and clean
+
+clean <- raw
+```
+
+# remove unnecessary columns
+
+In this chunk, I am removing columns with timestamps and complete. I added these columns to the fake dataset for you in case you also download from redcap/have similar columns.
+```{r}
+# second col redcap survey identifier. Remove
+clean <- clean[,-2]
+
+# remove cols that end ($) in the word 'timestamp'
+clean <- clean[, -grep("timestamp$", colnames(clean))]
+# 102 cols to 98 cols
+
+# remove cols that end ($) in the word 'complete'
+clean<-clean[, -grep("complete$", colnames(clean))]
+# 98 cols to 94 cols
+```
+
+# meaningfully rename demos
+```{r}
+# follows new name = old name. You would know what these should be named based on redcap/qualtrics whatever. Ideally, your variables are already named meaningfully and this isn't necessary. Alas.
+clean <- clean %>%
+  rename(
+    sexassigned = demo_1,
+    gender = demo_2,
+    gender_explain = demo_3,
+    sexorient = demo_4,
+    sexorient_explain = demo_5,
+    age = demo_6,
+    ethnicity = demo_7,
+    ethnicity_explain = demo_8,
+    height = demo_9,
+    weight = demo_10,
+    email = demo_11
+  )
+
+# check to make sure it did what you expected. I'm expecting my demos to be meaningfully named instead of demo_1, demo_2, etc.
+head(clean) # yay it worked
+```
+# demo levels
+
+1's and 2's tell us little about gender or sexual orientation, etc. fix these. you have to look at redcap to know which labels are attached to numbers.
+```{r}
+# rename levels meaningfully 
+# sexassign # levels 1 = male, 2 = female, 3 = intersex
+# first check the structure
+str(clean$sexassigned) # integer. needs to be factor
+clean$sexassigned <- as.factor(clean$sexassigned)
+# check structure again
+str(clean$sexassigned) # as factor
+levels(clean$sexassigned) # check. 3 levels
+table(clean$sexassigned) # how many people for each level. This should match line 108
+
+clean$sexassigned<- dplyr::recode(clean$sexassigned, "1" = "female", "2"="male", "3"="intersex")
+levels(clean$sexassigned) # check. it worked
+table(clean$sexassigned) # 10 female, 3 male, 1 intersex
+
+# gender
+str(clean$gender) # integer. needs to be factor
+clean$gender <- as.factor(clean$gender)
+str(clean$gender) # as factor
+levels(clean$gender) # check. levels 1-6
+table(clean$gender)
+# 1 = cisgender woman, 2 = cisgender man, 3 = trans woman, 4 = trans man, 5 = nonbinary, 6 = not listed
+clean$gender<- dplyr::recode(clean$gender, "1" = "cisgender woman", "2" = "cisgender man", "3" = "trans man", "4" = "trans woman", "5" = "nonbinary", "6" = "Not listed")
+levels(clean$gender) # check. it worked
+table(clean$gender)
+
+# sexorient
+str(clean$sexorient) # integer. needs to be factor
+clean$sexorient <- as.factor(clean$sexorient)
+str(clean$sexorient) # as factor
+levels(clean$sexorient) # 1-5 levels
+table(clean$sexorient)
+# levels 1 = lesbian or gay, 2 = heterosexual, 3 = bisexual, 5 = pansexual, 6 = asexual, 8 = Prefer not to disclose, 9 = questioning
+clean$sexorient<- dplyr::recode(clean$sexorient, "1" = "heterosexual", "2" = "lesbian/gay", "3" = "bisexual", "4" = "queer", "5" = "not listed")
+levels(clean$sexorient) 
+table(clean$sexorient)
+
+# ethnicity 
+str(clean$ethnicity) # integer. needs to be factor
+clean$ethnicity <- as.factor(clean$ethnicity)
+str(clean$ethnicity) # as factor
+levels(clean$ethnicity) # 6 levels
+table(clean$ethnicity)
+
+clean$ethnicity<- dplyr::recode(clean$ethnicity, "1" = "Asian or Pacific Islander", "2" = "Black, not of Hispanic origin", "3" = "Hispanic", "4" = "Multiracial, Biracial, Multiple Broad Categories", "5" = "White, not of Hispanic origin", "6" = "Not listed")
+levels(clean$ethnicity) 
+table(clean$ethnicity)
+
+```
+
+
+# fixing height
+
+In a great world, you have data validation set up and participants didn't have free range to write in height and weight however they want. If this is the case, this chunk won't be necessary. This has been such a nightmare for me, so I'm including it in case it's helpful to you. I wouldn't get lost in the weeds trying to figure out the functions I wrote for cleaning height :)
+
+let's get an idea of what responses look like first using `table`
+```{r}
+table(clean$height, useNA = "ifany") # this is fun. This is a training dataset with only 16 participants, so you could hardcode individually, but you can imagine not wanting to do this with an actual, long dataset
+```
+```{r}
+str(clean$height) # factor, make character because it's easier to manipulate those
+clean$height <- as.character(clean$height)
+str(clean$height) # character.
+
+# copy height column to check work
+clean$heightcheck <- clean$height
+
+# move it right next to the height column for easy comparisons
+clean <- clean %>% 
+  relocate(heightcheck, .after = height)
+
+# because we have standard and metric units I'm creating a column that identifies which is which. This doesn't work perfectly, but it's a nice start
+clean$height_is_standard <- grepl("\\d*\\D\\d", clean$heightcheck)
+clean <- clean %>% 
+  relocate(height_is_standard, .after = heightcheck)
+
+# one number in american standard
+clean[which(!clean$height_is_standard & grepl("in", clean$heightcheck)), "heightcheck"] <- gsub("\\D", "", clean[which(!clean$height_is_standard & grepl("in", clean$heightcheck)), "heightcheck"])
+
+# one number in feet
+clean[which(!clean$height_is_standard & grepl("ft|foot|feet|\\'", clean$heightcheck)), "heightcheck"] <- conv_unit(as.numeric(gsub("\\D", "", clean[which(!clean$height_is_standard & grepl("ft|foot|feet|\\'", clean$heightcheck)), "heightcheck"])), "ft", "inch")
+
+# look at it
+head(clean[,c("height","heightcheck")])
+
+# two numbers - this must be american standard
+clean[which(clean$height_is_standard), "heightcheck"] <- 12 * as.numeric(gsub("\\D.*","",clean[which(clean$height_is_standard), "heightcheck"])) + as.numeric(gsub("^\\d+\\D*(\\d*)\\D*","\\1",clean[which(clean$height_is_standard), "heightcheck"]))
+
+# look at it
+head(clean[,c("height","heightcheck")])
+
+
+# one number in metric
+clean[which(!clean$height_is_standard & grepl("cm", clean$height)), "heightcheck"] <- conv_unit(as.numeric(gsub("\\D", "", clean[which(!clean$height_is_standard & grepl("cm", clean$height)), "height"])),
+                                                                                        "cm", "inch")
+
+# look at it, specifically the person who wrote 163 cm
+head(clean[,c("height","heightcheck")])
+```
+## check height
+```{r}
+table(clean$heightcheck, useNA = "ifany") 
+# good all responses look like numbers in inches
+# check side by side
+clean[,c("height","heightcheck")]
+# looks like it was converted correctly
+
+# height is a numeric variable
+clean$heightcheck <- as.numeric(clean$heightcheck)
+str(clean$heightcheck) # numeric, good.
+
+# check plausible values
+describe(clean$heightcheck) # min = 60 inches, max = 69 inches. mean = 63.74 seems okay
+
+# visualize it
+# density plot
+ggplot(clean, aes(x = heightcheck)) + 
+  geom_density(aes(y = ..count..), fill = "lightgray") +
+  geom_vline(aes(xintercept = mean(height)), 
+             linetype = "dashed", size = 0.6,
+             color = "#FC4E07")
+
+# visualize it boxplot. good for seeing outliers
+ggplot(clean, aes(x = factor(1), y = heightcheck)) +
+  geom_boxplot(width = 0.4, fill = "white") +
+  geom_jitter() +
+  labs(x = NULL)   # Remove x axis label
+
+# remove height_is_standard col and old height column
+clean <- clean[,-c(which(colnames(clean)=="height"), which(colnames(clean)=="height_is_standard"))]
+
+# rename heightcheck to height
+clean <- clean %>% rename(height = heightcheck)
+```
+
+# fixing weight
+
+Similar to height, let's see what responses look like and go from there
+```{r}
+table(clean$weight, useNA = "ifany")
+
+# I see people wrote in characters. not what we want. One person reported their height in kg. someone else gave a range
+```
+
+```{r}
+# i'm going to deal with pounds first
+# character/strings to remove
+pattern <- c("lbs", "pounds", "lb.", "LB", " ")
+
+# create test variable
+clean$weightcheck <- clean$weight
+# move weight check variable after weight
+clean <- clean %>% 
+  relocate(weightcheck, .after = weight)
+
+clean$weightcheck <- str_remove_all(clean$weightcheck, paste(pattern, collapse = "|"))
+# look at it
+clean[,c("weight","weightcheck")] # okay those patterns were removed. 
+
+# outstanding problems: we still have the kg person and the person who gave the 100-105 range
+
+clean[which(grepl("kg|Kg|KG", clean$weight)), "weightcheck"] <- as.character(2.205 * as.numeric(gsub("([0-9]+).*$", "\\1",clean[which(grepl("kg|Kg|KG", clean$weight)), "weight"])))
+
+# look at it, paying attention to the kg person
+clean[,c("weight","weightcheck")] # okay yay. 
+
+# now the last person who wrote a range. I have code to deal with ranges but 2 isn't so bad, so i'll do them by hand
+
+filter(clean, weight == "100-105")
+# find the specific cells to change
+which(clean$weight == "100-105") # row number 14. 
+# if it was a really long dataset, you might now know which column number weightcheck is in. let's find it
+which(colnames(clean)=="weightcheck") # column number 13
+# change this problem cell by hand
+#data.frame[row_number, column_number] = new_value
+clean[14,13] = (100+105)/2 # height is column 14
+
+```
+
+## check weight
+```{r}
+# check plausible values
+table(clean$weightcheck) # responses are all numeric in pounds
+clean[,c("weight","weightcheck")] # looks good
+
+# weight is a numeric variable
+clean$weightcheck <- as.numeric(clean$weightcheck)
+str(clean$weightcheck) # numeric, good.
+describe(clean$weightcheck) # min = 80 lbs, max = 181 lbs. mean = 133.36 seems okay
+
+# visualize it
+# density plot
+ggplot(clean, aes(x = weightcheck)) + 
+  geom_density(aes(y = ..count..), fill = "lightgray") +
+  geom_vline(aes(xintercept = mean(height)), 
+             linetype = "dashed", size = 0.6,
+             color = "#FC4E07")
+
+# visualize it boxplot. good for seeing outliers
+ggplot(clean, aes(x = factor(1), y = weightcheck)) +
+  geom_boxplot(width = 0.4, fill = "white") +
+  geom_jitter() +
+  labs(x = NULL)   # Remove x axis label
+
+# remove old weight column
+clean <- clean[,-c(which(colnames(clean)=="weight"))]
+
+# rename weightcheck to weight
+clean <- clean %>% rename(weight = weightcheck)
+```
+
+# check age
+```{r}
+# check plausible values
+describe(clean$age) # minimum is 1. that is weird/not plausible
+
+clean %>%
+  filter(age <18) # 1 participants said 1 year old. change this to NA
+
+# i say find the row where age = 1, and the column age, replace with NA
+clean[which(clean$age == 1),which(colnames(clean)=="age")] = NA 
+
+#check again 
+describe(clean$age) # min = 18. good
+
+# visualize it
+ggplot(clean, aes(x = age)) +
+  geom_density() +
+  geom_vline(aes(xintercept = mean(weight)), 
+             linetype = "dashed", size = 0.6) # looks okay. 
+
+```
+
+
+# duplicates
+
+we were identifying duplicates visually. I trust R more than I do my eyes, especially with datasets with lots of participants, so that's why I do this.
+
+Removed 1 duplicate participant
+```{r}
+# first, are there duplicate initials/ids/whatever your identifying var is?
+table(clean$si, useNA = "ifany") # i see there are two people with the same initials KV and two people with the initials BH. let's put them in a dataframe
+
+duplicateids<-clean[duplicated(clean$si, incomparables = NA) | duplicated(clean$si, incomparables = NA, fromLast = TRUE),]
+
+# below I list IDs I want to look at more closely based on names/initials
+unique(duplicateids$si) # BH amd KV. clearly not necessary for 16 participants, but v useful with lots!
+
+# Check BH
+IDsToReview <- dplyr::filter(clean, grepl('BH', si))
+# inspect 
+head(IDsToReview) # These look like different people (e.g., diff height, weight, ethnicity). Not likely duplicates. leave alone
+
+# Check KV
+IDsToReview <- dplyr::filter(clean, grepl('KV', si))
+# inspect 
+head(IDsToReview) # this looks like the same person (same demos and same email). Which entry has more complete data? line 350 gives you a percent of how much data is missing. Higher number means greater missingness
+rowMeans(is.na(IDsToReview)) # id 2163 has more missing. remove them
+# Watch obs in global environment. Expecting observations to go down 1 so instead of 16, I will now expect 15 participants
+clean<-clean[-which(grepl("2163", clean$id)), ]
+```
+
+## check again
+```{r}
+# check again. creating a dataset with demos to easily find duplicates I may have missed
+demos= select(clean, c(id, si, sexassigned, gender, ethnicity, email))
+dupsi= demos[duplicated(demos$si, incomparables = NA) | duplicated(demos$si, incomparables = NA, fromLast = TRUE),]
+
+# okay there's BH but they're fine.
+
+# remove demos, dupsi, duplicateids, and IDsToReview
+rm(demos, dupsi, IDsToReview, duplicateids)
+
+# now that there are no duplicates, I'm going to empty the emails, so it's deidentified
+clean[1:nrow(clean),"email"] <- NA
+```
+
+# fix id's to all upper case
+```{r}
+str(clean$si) # this is a factor. needs to be character
+clean$si <- as.character(clean$si)
+str(clean$si) # character.
+
+# see what it looks like. 
+table(clean$si) # mix of upper and lower case
+
+# capitalize all strings
+clean$si<-toupper(clean$si)
+
+# check
+table(clean$si) # looks good
+
+# note: I have code for people who write their whole name and you just want to extract initials but didn't include here for simplicity
+```
+
+# remove bad participants
+
+Let's say someone started this link and completed none of the measures. they're pretty useless. 
+```{r}
+# looking at columns with measures so edeq through maia. This spans 81 columns. the column numbers (e.g., the 14:94) and the number of columns (e.g., 81) will need to be changed for your dataset.
+clean<-clean[!rowSums(is.na(clean[,c(14:94)]))==81,] 
+# removed 2 person with completely missing data
+```
+
+# check structure 
+```{r}
+# get a broad sense. Basically, you want demos to be factors and your scales to be numeric or integers. text fill in variables should be strings. Adding stringsAsFactors = FALSE argument to reading in raw data may help with this/make this chunk moot.
+str(clean)
+# okay so gender_explain, sexorient_explain, ethnicity_explain need to be character strings
+
+# factors, make characters
+clean[, c(which(colnames(clean)=="gender_explain"), which(colnames(clean)=="sexorient_explain"), which(colnames(clean)=="ethnicity_explain"))] <- lapply(clean[, c(which(colnames(clean)=="gender_explain"), which(colnames(clean)=="sexorient_explain"), which(colnames(clean)=="ethnicity_explain"))], as.character)
+
+# okay final check
+str(clean, list.len=ncol(clean)) # looks good
+
+```
+
+# Scoring measures!
+
+# ede-q 6
+
+## check frequency items
+```{r}
+table(clean$edeq6_13, useNA = "ifany")
+table(clean$edeq6_14, useNA = "ifany")
+table(clean$edeq6_15, useNA = "ifany")
+table(clean$edeq6_16, useNA = "ifany")
+table(clean$edeq6_17, useNA = "ifany")
+table(clean$edeq6_18, useNA = "ifany")
+
+# all numeric
+```
+
+## subscales and total scale
+```{r}
+# we checked structure, but never hurts to check again
+str(clean[,grep("^edeq6_", colnames(clean))]) # integers. okay
+# check that the scale is what it's supposed to be
+describe(clean[,grep("^edeq6_", colnames(clean))]) # 0-6 scale for items. good.
+
+# restraint
+## items 1, 2, 3, 4, 5
+clean$edeq6_restraint <- rowMeans(clean[,which(names(clean)=="edeq6_1"):which(names(clean)=="edeq6_5")], na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,which(names(clean)=="edeq6_1"):which(names(clean)=="edeq6_5")])) 
+
+# check plausible values
+describe(clean$edeq6_restraint) # min = 0, max = 6 good. mean = 1.08
+
+
+# eating concern
+## items 7, 9, 19, 21, 20
+clean$edeq6_eatconcern <- rowMeans(clean[,c(which(names(clean)=="edeq6_7"), which(names(clean)=="edeq6_9"), which(names(clean)=="edeq6_19"), which(names(clean)=="edeq6_21"), which(names(clean)=="edeq6_20"))], na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c(which(names(clean)=="edeq6_7"), which(names(clean)=="edeq6_9"), which(names(clean)=="edeq6_19"), which(names(clean)=="edeq6_21"), which(names(clean)=="edeq6_20"))])) 
+
+# check plausible values
+describe(clean$edeq6_eatconcern) # min = 0, max = 4 good. mean = .6
+
+
+# shape concern
+## items 6, 8, 23, 10, 26, 27, 28, 11
+clean$edeq6_shapeconcern <- rowMeans(clean[,c(which(names(clean)=="edeq6_6"), which(names(clean)=="edeq6_8"), which(names(clean)=="edeq6_23"), which(names(clean)=="edeq6_10"), which(names(clean)=="edeq6_26"), which(names(clean)=="edeq6_27"), which(names(clean)=="edeq6_28"), which(names(clean)=="edeq6_11"))], na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c(which(names(clean)=="edeq6_6"), which(names(clean)=="edeq6_8"), which(names(clean)=="edeq6_23"), which(names(clean)=="edeq6_10"), which(names(clean)=="edeq6_26"), which(names(clean)=="edeq6_27"), which(names(clean)=="edeq6_28"), which(names(clean)=="edeq6_11"))])) 
+
+# check plausible values
+describe(clean$edeq6_shapeconcern) # min = 0, max = 4.62 good. mean = 1.61
+
+
+# weight concern
+## items 22, 24, 8, 25, 12
+clean$edeq6_weightconcern <- rowMeans(clean[,c(which(names(clean)=="edeq6_22"), which(names(clean)=="edeq6_24"), which(names(clean)=="edeq6_8"), which(names(clean)=="edeq6_25"), which(names(clean)=="edeq6_12"))], na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c(which(names(clean)=="edeq6_22"), which(names(clean)=="edeq6_24"), which(names(clean)=="edeq6_8"), which(names(clean)=="edeq6_25"), which(names(clean)=="edeq6_12"))])) 
+
+# check plausible values
+describe(clean$edeq6_weightconcern) # min = 0, max = 5.6 good. mean = 1.62
+
+
+# global
+clean$edeq6_global <- rowMeans(clean[,c(which(names(clean)=="edeq6_restraint"), which(names(clean)=="edeq6_eatconcern"), which(names(clean)=="edeq6_shapeconcern"), which(names(clean)=="edeq6_weightconcern"))], na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c(which(names(clean)=="edeq6_restraint"), which(names(clean)=="edeq6_eatconcern"), which(names(clean)=="edeq6_shapeconcern"), which(names(clean)=="edeq6_weightconcern"))])) 
+
+# check plausible values
+describe(clean$edeq6_global) # min = 0, max = 4.44 good. mean = 1.23
+
+# how many above 2.3
+filter(clean, edeq6_global > 2.3) %>% 
+  summarise(count = n(), proportion = count / nrow(clean)) # 2 people, 15.38%
+
+
+# relocate
+clean <- clean %>%
+  sjmisc::move_columns("edeq6_restraint", "edeq6_eatconcern", "edeq6_shapeconcern", "edeq6_weightconcern", "edeq6_global", .after = edeq6_28) 
+```
+
+# bdi-ii
+
+this one has 21 items (clinical)
+Scale: 0-3
+Items 16 and 18 are on a 0-6 scale and need to be recoded as follows: (0=0, 1=1, 2=1, 3=2, 4=2, 5=3, 6=3)
+The sum all items for total score
+```{r}
+# find the columns that start with "^" bdi. you could use dplyr's start_with but grep and regex is more flexible, especially if you get into hairier strings down the line
+str(clean[,grep("^bdi", colnames(clean))]) # integers. okay
+describe(clean[,grep("^bdi", colnames(clean))]) # 0-3 scale except 16 and 18 0-6
+
+# recode item 16
+table(clean$bdi_16_clinical)
+clean$bdi_16_clinical <- dplyr::recode(clean$bdi_16_clinical, `0`=0, `1`=1, `2`=1, `3`=2, `4`=2, `5`=3, `6`=3)
+
+# recode item 18
+clean$bdi_18_clinical <- dplyr::recode(clean$bdi_18_clinical, `0`=0, `1`=1, `2`=1, `3`=2, `4`=2, `5`=3, `6`=3)
+
+# Sum total scale score
+clean <- clean %>%
+  mutate(bdi_clinical_total = rowSums(select(., starts_with("bdi_")), na.rm = TRUE)* ifelse(rowSums(is.na(select(., starts_with("bdi_")))) == ncol(select(., starts_with("bdi_"))), NA, 1))
+
+#check plausible values max = 63
+describe(clean$bdi_clinical_total) # max = 34
+
+# move after last item
+clean <- clean %>% 
+  relocate(bdi_clinical_total, .after = bdi_21_clinical)
+
+```
+
+
+# maia
+
+## recode
+```{r}
+# I notate items were recoded by adding r at the end
+describe(clean[,which(colnames(clean)=="maia_adol_1"):which(colnames(clean)=="maia_adol_32")]) # yep 0-5
+
+clean <- clean %>%
+  mutate(maia_adol_5r = dplyr::recode(maia_adol_5, `0`=5, `1`=4, `2`=3, `3`=2, `4`=1, `5`=0))  %>%
+  mutate(maia_adol_6r = dplyr::recode(maia_adol_6, `0`=5, `1`=4, `2`=3, `3`=2, `4`=1, `5`=0))  %>%
+  mutate(maia_adol_7r = dplyr::recode(maia_adol_7, `0`=5, `1`=4, `2`=3, `3`=2, `4`=1, `5`=0)) %>%
+  mutate(maia_adol_8r = dplyr::recode(maia_adol_8, `0`=5, `1`=4, `2`=3, `3`=2, `4`=1, `5`=0))  %>%
+  mutate(maia_adol_9r = dplyr::recode(maia_adol_9, `0`=5, `1`=4, `2`=3, `3`=2, `4`=1, `5`=0)) 
+
+# relocate 
+clean <- clean %>% 
+  relocate(maia_adol_5r, .after = maia_adol_5) %>%
+  relocate(maia_adol_6r, .after = maia_adol_6) %>%
+  relocate(maia_adol_7r, .after = maia_adol_7) %>%
+  relocate(maia_adol_8r, .after = maia_adol_8) %>%
+  relocate(maia_adol_9r, .after = maia_adol_9)
+
+```
+## score
+```{r}
+# Subscales:
+# Noticing: 1, 2, 3, 4
+clean$maia_notice <- rowMeans(sapply(clean[,c("maia_adol_1", "maia_adol_2", "maia_adol_3", "maia_adol_4")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_1", "maia_adol_2", "maia_adol_3", "maia_adol_4")]))
+
+# Not-distracting: 5(R), 6(R), 7(R)
+clean$maia_nondistract <- rowMeans(sapply(clean[,c("maia_adol_5r", "maia_adol_6r", "maia_adol_7r")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_5r", "maia_adol_6r", "maia_adol_7r")]))
+
+# Not-worrying: 8(R), 9(R), 10
+clean$maia_nonworry <- rowMeans(sapply(clean[,c("maia_adol_8r", "maia_adol_9r", "maia_adol_10")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_8r", "maia_adol_9r", "maia_adol_10")]))
+
+# Attention regulation: 11-17
+clean$maia_attn <- rowMeans(sapply(clean[,c("maia_adol_11", "maia_adol_12", "maia_adol_13", "maia_adol_14", "maia_adol_15", "maia_adol_16", "maia_adol_17")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_11", "maia_adol_12", "maia_adol_13", "maia_adol_14", "maia_adol_15", "maia_adol_16", "maia_adol_17")]))
+
+# Emotional awareness: 18:22
+clean$maia_emotion <- rowMeans(sapply(clean[,c("maia_adol_18", "maia_adol_19", "maia_adol_20", "maia_adol_22", "maia_adol_22")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_18", "maia_adol_19", "maia_adol_20", "maia_adol_22", "maia_adol_22")]))
+
+# Self-regulation: 23-26
+clean$maia_selfreg <- rowMeans(sapply(clean[,c("maia_adol_23", "maia_adol_24", "maia_adol_25", "maia_adol_26")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_23", "maia_adol_24", "maia_adol_25", "maia_adol_26")]))
+
+# Body listening: 27-29
+clean$maia_body <- rowMeans(sapply(clean[,c("maia_adol_27", "maia_adol_28", "maia_adol_29")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_27", "maia_adol_28", "maia_adol_29")]))
+
+# Trusting: 30-32
+clean$maia_trust <- rowMeans(sapply(clean[,c("maia_adol_30", "maia_adol_31", "maia_adol_32")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_30", "maia_adol_31", "maia_adol_32")]))
+
+# there's a NaN instead of NA. let's fix this
+is.nan.data.frame <- function(x)
+  do.call(cbind, lapply(x, is.nan))
+
+# apply the function to the dataframe
+clean[is.nan(clean)] <- NA
+
+# relocate (note: they're already here, but in case they werent)
+clean <- clean %>%
+  sjmisc::move_columns("maia_notice", "maia_nondistract", "maia_nonworry", "maia_attn", "maia_emotion", "maia_selfreg", "maia_body", "maia_trust", .after = maia_adol_32) 
+```
+
+# add variable labels
+
+I did this at the end because expss masks lots of useful packages and I didn't want to write dplyr before a lot of functions
+```{r}
+library(expss) # for naming variable labels # this package masks some dplyr objects between, compute, na_if, recode, vars. If you want to use these run dplyr::recode(insert code here)
+
+# add edeq labels
+clean = apply_labels(clean,
+                     edeq6_1 = "Have you been deliberately trying to limit the amount of food you eat to influence your shape or weight (whether or not you have succeeded)?",
+                    edeq6_2 = "Have you gone for long periods of time (8 waking hours or more) without eating anything at all in order to influence your shape or weight?",
+                    edeq6_3 = "Have you tried to exclude from your diet any foods that you like in order to influence your shape or weight (whether or not you have succeeded)?",
+                    edeq6_4 = "Have you tried to follow definite rules regarding your eating (for example, a calorie limit) in order to influence your shape or weight (whether or not you have succeeded)?",
+                    edeq6_5 = "Have you had a definite desire to have an empty stomach with the aim of influencing your shape or weight?",
+                    edeq6_6 = "Have you had a definite desire to have a totally flat stomach?",
+                    edeq6_7 = "Has thinking about food, eating or calories made it very difficult to concentrate on things you are interested in (for example, working, following a conversation, or reading)?",
+                    edeq6_8 = "Has thinking about shape or weight made it very difficult to concentrate on things you are interested in (for example, working, following a conversation, or reading)?",
+                    edeq6_9 = "Have you had a definite fear of losing control over eating?",
+                    edeq6_10 = "Have you had a definite fear that you might gain weight?",
+                    edeq6_11 = "Have you felt fat?",
+                    edeq6_12 = "Have you had a strong desire to lose weight?",
+                    edeq6_13 = "Over the past 28 days, how many times have you eaten what other people would regard as an unusually large amount of food (given the circumstances)?",
+                    edeq6_14 = "On how many of these times did you have a sense of having lost control over your eating (at the time that you were eating)?
+",
+                    edeq6_15 = "Over the past 28 days, on how many DAYS have such episodes of overeating occurred (i.e., you have eaten an unusually large amount of food and have had a sense of loss of control at the time)?",
+                    edeq6_16 = "Over the past 28 days, how many times have you made yourself sick (vomit) as a means of controlling your shape or weight?",
+                    edeq6_17 = "Over the past 28 days, how many times have you taken laxatives as a means of controlling your shape or weight?",
+                    edeq6_18 = "Over the past 28 days, how many times have you exercised in a “driven” or “compulsive” way as a means of controlling your weight, shape or amount of fat, or to burn off calories?",
+                    edeq6_19 = "Over the past 28 days, on how many days have you eaten in secret (ie, furtively)? Do not count episodes of binge eating",
+                    edeq6_20 = "On what proportion of the times that you have eaten have you felt guilty (felt that you've done wrong) because of its effect on your shape or weight? Do not count episodes of binge eating",
+                    edeq6_21 = "Over the past 28 days, how concerned have you been about other people seeing you eat? Do not count episodes of binge eating",
+                    edeq6_22 = "Has your weight influenced how you think about (judge) yourself as a person?",
+                    edeq6_23 = "Has your shape influenced how you think about (judge) yourself as a person?",
+                    edeq6_24 = "How much would it have upset you if you had been asked to weigh yourself once a week (no more, or less, often) for the next four weeks?",
+                    edeq6_25 = "How dissatisfied have you been with your weight?",
+                    edeq6_26 = "How dissatisfied have you been with your shape?",
+                    edeq6_27 = "How uncomfortable have you felt seeing your body (for example, seeing your shape in the mirror, in a shop window reflection, while undressing or taking a bath or shower)?",
+                    edeq6_28 = "How uncomfortable have you felt about others seeing your shape or figure (for example, in communal changing rooms, when swimming, or wearing tight clothes)?",
+                    edeq6_restraint = "EDE-Q 6 restraint subscale",
+                    edeq6_eatconcern = "EDE-Q 6 eating concern subscale",
+                    edeq6_weightconcern = "EDE-Q 6 weight concern subscale",
+                    edeq6_shapeconcern = "EDE-Q 6 shape concern subscale"
+)
+
+# add bdi labels
+clean = apply_labels(clean,
+                     bdi_1_clinical = "Sadness",
+                     bdi_2_clinical = "Pessimism",
+                     bdi_3_clinical = "Past failure",
+                     bdi_4_clinical = "Loss of pleasure",
+                     bdi_5_clinical = "Guilty feelings",
+                     bdi_6_clinical = "Punishment feelings",
+                     bdi_7_clinical = "Self-dislike",
+                     bdi_8_clinical = "Self-criticalness",
+                     bdi_9_clinical = "Suicidal thoughts",
+                     bdi_10_clinical = "Crying",
+                     bdi_11_clinical = "Agitation",
+                     bdi_12_clinical = "Loss of interest",
+                     bdi_13_clinical = "Indecisiveness",
+                     bdi_14_clinical = "Worthlessness",
+                     bdi_15_clinical = "Loss of energy",
+                     bdi_16_clinical = "Changes in sleeping patterns",
+                     bdi_17_clinical = "Irritability",
+                     bdi_18_clinical = "Changes in appetite",
+                     bdi_19_clinical = "Concentration difficulty",
+                     bdi_20_clinical = "Tiredness or fatigue",
+                     bdi_21_clinical ="Loss of interest in sex",
+                     bdi_clinical_total = "BDI clinical total score sum")
+
+# add maia labels
+clean = apply_labels(clean,
+                     maia_adol_1 = "When I am nervous I can tell where in my body the feelings come from.",
+                     maia_adol_2 = "I can tell when I am uncomfortable in my body.",
+                     maia_adol_3 = "I can tell where in my body I am comfortable.",
+                     maia_adol_4 = "I ignore bad feelings in my body until they become very strong",
+                     maia_adol_5 = "I distract myself when I feel uncomfortable or feel pain",
+                     maia_adol_6 = "When I feel uncomfortable or feel pain, I try to get over it",
+                     maia_adol_7 = "When I feel pain in my body, I become upset.",
+                     maia_adol_8 = "I get worried if I feel pain or if I feel uncomfortable",
+                     maia_adol_9 = "I can tell if I have a bad feeling in my body but I don't worry about it",
+                     maia_adol_10 = "I can focus on how I breathe without thinking about anything else",
+                     maia_adol_11 = "I can focus on how I breathe without thinking about anything else.",
+                     maia_adol_12 = "I can focus on the feelings in my body, even when there is a lot going on around me.",
+                     maia_adol_13 = "When I am talking to someone, I can focus on the way I am standing or sitting.",
+                     maia_adol_14 = "Even if I am distracted I can go back to thinking how my body feels.",
+                     maia_adol_15 = "I can return my focus from thinking about things to feeling my body.",
+                     maia_adol_16 = "I can pay attention to my whole body even when a part of it is in pain.",
+                     maia_adol_17 = "I can focus on my entire body when I try.",
+                     maia_adol_18 = "I can feel how my body changes when I am angry.",
+                     maia_adol_19 = "When something is wrong in my life I can feel it in my body.",
+                     maia_adol_20 = "After a peaceful moment, I can feel my body is different.",
+                     maia_adol_21 = "I can feel that my breathing becomes free and easy when I am comfortable.",
+                     maia_adol_22 = "I can feel how my body changes when I feel happy.",
+                     maia_adol_23 = "I can feel calm even if there is a lot going on.",
+                     maia_adol_24 = "When I focus on how I feel in my body, I calm down.",
+                     maia_adol_25 = "I can use my breath to help me calm down and relax",
+                     maia_adol_26 = "When I am thinking too much, I can calm my mind by focusing on my body/breathing.",
+                     maia_adol_27 = "I listen for clues from my body about my emotions.",
+                     maia_adol_28 = "When I am upset, I take time to check how my body feels.",
+                     maia_adol_29 = "I listen to my body to help me choose what to do.",
+                     maia_adol_30 = "I feel good in my body.",
+                     maia_adol_31 = "I feel my body is a safe place.",
+                     maia_adol_32 = "I trust the way my body feels.",
+                     maia_notice = "maia_adol noticing subscale avg",
+                     maia_nondistract = "maia_adol nondistracting subscale avg",
+                     maia_nonworry = "maia_adol nonworrying subscale avg",
+                     maia_attn = "maia_adol attn regulation subscale avg",
+                     maia_selfreg = "maia_adol self regulation subscale avg",
+                     maia_emotion = "maia_adol emotional awareness subscale avg",
+                     maia_body = "maia_adol body listening subscale avg",
+                     maia_trust = "maia_adol body trust subscale avg")
+
+```
+
+# save
+```{r}
+name= 'Data name_clean_initialsofwhocleaned_'
+filetype= '.csv'
+filename= paste(name, Sys.Date(), filetype, sep='')
+
+write.csv(clean,file=filename, row.names = FALSE)
+```
+
+# save for spss
+
+if you have people in the lab who are going to use your data in SPSS
+```{r}
+library(haven)
+
+write_sav(clean, "Data name_clean_initialsofwhocleaned_date.sav")
+```
+
