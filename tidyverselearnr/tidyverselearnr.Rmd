@@ -9,7 +9,6 @@ runtime: shiny_prerendered
 
 ```{r setup, include=FALSE}
 library(learnr)
-knitr::opts_chunk$set(echo = FALSE)
 ```
 Materials can be found on [github](https://github.com/cecusack/EATLab-R-rschdev.git)
 
@@ -271,7 +270,7 @@ PDB_SR %>%
 
 
 ```
-<div id="filter-hint">
+<div id="visualize-hint">
 **Hint:** pipe your dataframe into ggplot and update your aesthetics arguments.
 </div>
 ```{r visualize-solution}
