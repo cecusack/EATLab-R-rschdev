@@ -1,0 +1,176 @@
+---
+title: "MLM data cleaning"
+author: "Rowan"
+date: "6/14/2021"
+output: html_document:
+  toc: TRUE
+  toc_depth: 6
+  toc_float: TRUE
+  number_sections: TRUE
+  code_folding: hide
+  df_print: paged
+  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+For further (better) tutorials on MLM data analysis, data preparation, etc. I highly, highly recommend Penn State QuantDev tutorials here: https://quantdev.ssri.psu.edu/resources/intensive-longitudinal-data-analysis-experience-sampling-and-ema-data
+
+The below tutorial is an amalgamation of things that I've learned from the QuantDev tutorials above, Dr. Evan Kleiman's tutorial (Understanding and analyzing multilevel data from real-time monitoring studies: An easily accessible tutorial: https://psyarxiv.com/xf2pw/), reading books on intensive longitudinal methods, and banging my head against the keyboard. There are probably smoother, more sophisticated ways of doing this, but this is what I have so far!
+
+# packages
+
+The first thing we'll do is load in our packages. As with most things R-related, there are a million different ways to do some of the things we'll be doing below. The packages below are just what I've found to work well for me!
+
+```{r message=FALSE, warning=FALSE}
+
+library(psych) #for just general stuff, IDK; wide/long
+library(plyr) # for data manipulation
+library(ggplot2) #for data visualization
+library(DataCombine) # for combining data
+library(EMAtools) #for leading and lagging data
+```
+
+# load in data
+
+Next, we'll go ahead and load in our dataset. Because this data was cleaned to have the missing data filled with NA, my `na.strings` argument looks a little bit different than the data examples in Claire's earlier tutorials. Rather than having to specify all possible NA strings, I can just include "NA". 
+
+```{r message=FALSE, warning=FALSE}
+DH1_raw <- read.csv("DH1 ema.csv", header = T, sep = ",", na.strings = "NA", stringsAsFactors = F) #because this data was cleaned before loading into R, my na.strings argument looks a little different than claire's prior examples. I know for a fact that my NAs are all in the data as "NA", so I only need to include that instead of all of the possible variants (e.g., "-99", "99", "na", "N/A" and so forth).
+
+DH1_ema <- DH1_raw #to make a copy before we start playing around.  
+
+```
+
+# long vs. wide data
+
+Data is usually stored in 1 of 2 formats -- wide format or long format. Wide is the typical format that you see in our lab's self-report datasets -- with each column representing a new measure/item, each row demonstrating one participant. In wide format across multiple timepoints, you might have variables labeled like `T1_EDEQ` and `T2_EDEQ` as different columns within the same dataset. Basic take away, with wide data, one row = one participant.
+
+Long format is the format needed for EMA data! It's called long because it is... well... long! In EMA data (or any intensive longitudinal data like daily diaries, etc.), each row is an observation at one timepoint, but participants will have multiple rows of data (because they have data at multiple timepoints)! You could also store the longitudinal data described above as long format -- it would just require having a column for timepoint (e.g., T1, T2) and a column for EDEQ scores. You'd put a person's T1 EDEQ scores in the EDEQ column and the T1 row, and you'd put their T2 EDEQ scores in the EDEQ column, but in the T2 row. 
+
+Because you never know what format data is going to come in, it's helpful to be able to manipulate data to go from long to wide or vice versa. 
+
+## reshape long to wide
+
+Because our data started in long format, I'll start by changing it to wide.
+
+```{r message=FALSE, warning=FALSE}
+
+DH1_wide <- reshape(data=DH1_ema, 
+                    timevar=c("beep"), # the variable that differentiates time point. In this dataset, it's name is beep
+                    idvar="id",
+                    v.names=c("editotal_ema", "bsamtotal_ema", "bdtotal_ema", "saatotal_ema", "fnetotal_ema",
+                              "stresstotal_ema", "dt_ema"), # v.names = names of variables interested in that you want to keep
+                    direction="wide", 
+                    sep="_", # this will add _timepoint/beep after each variable name
+                    drop=c("date", "uncomfss_ema", "SS_ema", "EAT_ema", "calories_ema", "timeseat_ema",
+                           "minexer_ema")) # drop = list of variables to remove before reshaping
+
+
+head(DH1_wide) #examine headers and make sure code worked
+
+```
+
+## reshape wide to long
+
+Now we'll turn this wide data back into long data.
+
+```{r}
+
+DH1_long <- reshape(data=DH1_wide, 
+                     timevar="beep", 
+                     idvar="id",
+                     direction="long", sep="_")
+
+head(DH1_long) # examine headers and make sure code worked. darn! it looks like it did work, but it kept the data organized by participant (90, 91, 98). We'll want to sort it by id and by day to make it look like our original dataset.
+
+DH1_long <- DH1_long[order(DH1_long$id,DH1_long$beep),] #re-sorts data by ID and beep
+
+head(DH1_long) ##check again!
+# CEC: it's looking better but it lost the days. going to add days in here
+# copying DH1_long to test dataframe in case it messes up things later.
+test <- DH1_long
+test$day <- rep(1:7, each = 4, length.out = nrow(test)) # in this dataset, participants completed EMA for 7 days with 4 beeps per day so I'm replicating the numbers 1:7 (days), with each number repeated 4 times before moving onto the next day, and am doing this for the length of the dataframe using the arg length.out = nrow(test))
+```
+
+
+There are tons of other things you'll prob want to do with the data -- and tons of things I'm still figuring out how to do (add lines in between days, use ggplot to plot out individual participants, etc.) Again, I really encourage you to check out the QuantDev website! 
+
+# data prep for MLM
+
+I do want to cover how to do some really important steps for prepping the data for analysis (specifically multilevel modeling/mixed effects modeling). First, that requires understanding what MLM is as an analysis technique!
+
+This is another place where I'll plug Evan Kleiman's tutorial, but I'll do my best to summarize here. 
+
+Analyzing EMA data requires specical analytic techniques (beyond regression) because the data is nested within itself in a complex fashion. For example, take most of our studies -- participants fill out EMA **4** times a day for at least **14** days. When you have the same person answering the same question multiple times, things get messy because the data is no longer independent. Independence is an important assumption of all forms of ordinary least squares (OLS) regression (e.g., linear regression, logistic regression). EMA data, by design, can not meet the assumption of independence because data from the same person is going to be more closely related than data from two different people. As such, we need a way of dealing with the structure of EMA data so that we can run some ~regression-esque~ analyses on it. MLM techniques account for the violation of independence. 
+
+If we think about our data, we'll see that there are levels to it. At the top level, you have each participant. Typically, this is where our data stops, because each participant accounts for one observation. However, with this dataset, we have days within participants (i.e., each participant's data includes multiple days). Then within days, we have beeps (i.e., each participant's days includes 4 beeps/observations). So technically, this data is 3-levels (so we could analyze it with a 3 level model). There are multiple ways of handling this, but one way you can address this is by partitioning data into within and between person variance (or state and trait variance). This pulls out the influence on the data the occurs because of non-independence (or multi-sampling of each participant).
+
+## disagregating IVs into 'state' and 'trait' 
+
+In order to conduct multilevel models, we need to disaggregate our time varying predictors (TVPs/IVs) into state and trait effects. Trait captures each individual's 'tendency' across the timepoints (i.e., their average on X IV across all of the days/beeps). Below I'll prep the data to allow me to examine the influence of momentary social appearance anxiety (`saatotal_ema`) on ED symptoms (`editotal_ema`). So, I'll need to pull out the 'trait' and 'state' levels for SAA because it's our IV. I'll then merge these 'trait' variables into the 'packet' to group them with the other 'trait' variables. 
+
+In this case, 'trait' would be calculated by creating an within-person average that captures their ~tendency~. 
+
+## trait variables 
+```{r message = FALSE, warning = FALSE}
+# ddply is a plyr function used to split a data frame, apply a function, and returns results in a dataframe. Basically like a friendlier apply function seen in Base R. Follow's Hadley Wichkam's split-apply-combine flow
+DH1_imeans <- ddply(DH1_ema, "id", summarize, 
+                    saa_trait = mean(saatotal_ema, na.rm = TRUE))
+
+# in line 119, I'm creating a dataframe called DH1_imeans.  ddply takes the arguments of the dataframe to be processed (DH1_ema), the variables to split by ("id"), summarize, and create new trait variable (saa_trait) for participants by calculating the mean saa score over the participant's EMA data This dataframe DH1_imeans will be the length of total N, with two columns ("id", and "saa_trait")
+
+describe(DH1_imeans) ##check that there are the correct amount of variables and that the range looks as expected # alright ignoring the id column because these values are meaningless. Let's look at saa_trait  min and max. The scale min and max = X and X, so okay
+
+# now attach the EMA trait means column to original self-report dataset using merge. Because DH1_imeans follows DH1_ema, the DH1_imeans will come at the end
+DH1_ema <- merge(DH1_ema, DH1_imeans, by="id") # merge the EMA trait items into the self-report data. the DH1_imeans had 2 cols (id and saa_trait), but merge will drop one of the id columns because that's what we're merging by/how it knows to line up cell values
+
+head(DH1_ema) # yep, saa_trait at the end
+```
+
+Next, I create sample-centered versions of the 'trait' measures so that I can compare between persons later. I will save these centered variables in my self-report dataset (where all of my other trait varibales are).
+
+## center trait variables
+```{r message = FALSE, warning = FALSE}
+# Rowan denotes centered variables by adding "c." in front of variable names.
+DH1_ema$c.saa_trait <- scale(DH1_ema$saa_trait,center=TRUE,scale=FALSE)
+# check. Note this will output descriptives of whole dataframe
+describe(DH1_ema)
+
+# if you don't care/want to to sift, you can check centered variable specifically. Expecting the mean = 0 because centered
+describe(DH1_ema$c.saa_trait) # mean = 0, sd = 5.52, min = -7.03, max = 17.36
+
+```
+
+For the last step of disaggregating the IVs, we'll create 'state' measures. These are calculated for each observation (so day 1 beep 1, day 1 beep 2) by subtracting the value at that time point from the person's own trait value. Because individuals have their own 'baselines' of things like social appearance anxiety and fear of negative evaluation, it's important that we have a way of examining this variation **within** person. By calculating this state measure, we're able to how much a person is varying from their **own** average at each time point (i.e., is this person more anxious than they usually are?). We'll name these variables as ``variable_state`` and save them to our new long dataset. 
+
+## state variables
+```{r}
+
+DH1_ema$saa_state <- DH1_ema$saatotal_ema - DH1_ema$saa_trait
+head(DH1_ema)
+# if you just want to get a sense of the saa cols
+head(DH1_ema[,c("id", "saa_trait", "c.saa_trait", "saa_state")]) # looking like I imagined. 
+# if you want to see everyone's run the line below
+# DH1_ema[,c("id", "saa_trait", "c.saa_trait", "saa_state")]
+```
+
+One additional thing that we use EMA data for is to examine temporal relationships at small scale! In order to do that, we need to lead/lag our variables. 
+
+## time lag DVs
+
+Below we will 'slide' the EMA items that we need to time lag -- this will be for any DV where we are trying to predict **at the next time point**. You can either lag data by moving the IV from time T down to the row that contains the data at time T+1. OR you can lead data by moving the the DV from T+1 down to the row with the IVs from T. I typically opt for leading, because it requires moving the DV (and typically there are less DVs than IVs)
+
+'Leading' refers to moving sliding forward to the next timepoint -- since we are moving by one timepoint, we use ``slideBy=1``. If we wanted to lead by two timepoints, we would use ``slideBy=2``, and if we wanted to lag our data by one timepoint, we would use ``slideBy=-1``. 
+
+
+```{r message=FALSE, warning=FALSE}
+
+DH1_ema<-slide(data=DH1_ema,Var="editotal_ema",TimeVar="beep",GroupVar="id",NewVar="ed_lead",slideBy=1)
+
+head(DH1_ema[, c("id", "editotal_ema", "ed_lead")]) # looking like i want. I notice the ed_lead is the edi_total lead by 1 beep
+```
+
+

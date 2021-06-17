@@ -198,7 +198,7 @@ PDB_SR %>%
 
 ```{r summarise-solution}
 PDB_SR %>% 
-  filter(age < 30) %>% # find participants under 30
+  filter(age > 30) %>% # find participants over 30
   summarize(weight = median(weight)) 
 ```
 

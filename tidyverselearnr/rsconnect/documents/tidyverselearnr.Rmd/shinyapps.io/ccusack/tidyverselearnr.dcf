@@ -5,9 +5,9 @@ account: ccusack
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 4185162
-bundleId: 4639504
+bundleId: 4720107
 url: https://ccusack.shinyapps.io/tidyverselearnr/
-when: 1621983816.66275
-lastSyncTime: 1621983816.66276
+when: 1623784501.03363
+lastSyncTime: 1623784501.03365
 asMultiple: FALSE
 asStatic: FALSE
