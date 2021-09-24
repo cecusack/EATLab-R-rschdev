@@ -1,0 +1,692 @@
+---
+title: "create xsectional fake data"
+author: "CCusack"
+date: "7/14/2021"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 6
+    toc_float: true
+    number_sections: true
+    code_folding: hide
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this markdown, I create a fake cross-sectional dataset to run for research dev rmarkdowns/training materials for RAs/students. I'm trying to make these data relatively clean as the point is to learn how to run inferential statistics in R, not clean data. These are two related yet big topics that are best learned in pieces. If you want resources for cleaning dataset, see tidyverse intro and then the intro to data cleaning folders. If this goes well, I may try to make a longitudinal dataset, but given this is my first time creating a fake dataset in R, I'm just going to focus on one time point :) I set seeds throughout this to allow for reproducibility. If you want different numbers, don't set seeds. If you want different numbers that you also want to make reproducible, set different seeds. The numbers within set.seed are arbitrary.
+
+# set up
+## load packages
+```{r packages, warning=FALSE, message=FALSE}
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")} # a lifeline
+if (!require("stringi")) {install.packages("stringi"); require("stringi")} # generate random character strings
+# if (!require("faux")) {install.packages("faux"); require("faux")} # generate psych data; ended up not using
+if (!require("psych")) {install.packages("psych"); require("psych")} # describe fx
+if (!require("sjmisc")) {install.packages("sjmisc"); require("sjmisc")} 
+if (!require("gdata")) {install.packages("gdata"); require("gdata")} # sim
+if (!require("corpcor")) {install.packages("corpcor"); require("corpcor")} # sim
+if (!require("MASS")) {install.packages("MASS"); require("MASS")} # sim
+```
+
+## Functions
+Created some functions to help with sampling
+```{r warning=FALSE, message=FALSE}
+# function for a generalized form of the beta distribution.
+beta_dist <- function(n, mean, var, min = 0, max = 1)
+  {
+  dmin <- mean - min
+  dmax <- max - mean
+# throw errors when
+  if (dmin <= 0 || dmax <= 0)
+  {
+    stop(paste("mean must be between min =", min, "and max =", max))
+  }
+  if (var >= dmin * dmax)
+  {
+    stop(paste("var must be less than (mean - min) * (max - mean) =", dmin * dmax))
+  }
+# mean and variance of the standard beta distributed variable
+  mx <- (mean - min) / (max - min)
+  vx <- var / (max - min)^2
+ # find the corresponding alpha-beta parameterization
+  a <- ((1 - mx) / vx - 1 / mx) * mx^2
+  b <- a * (1 / mx - 1)
+# generate standard beta observations and transform
+  x <- rbeta(n, a, b)
+  y <- round((max - min) * x + min) # round to make integer
+
+  return(y)
+}
+
+mysamp <- function(n, m, s, lwr, upr, nnorm) {
+  samp <- rnorm(nnorm, m, s)
+  samp <- samp[samp >= lwr & samp <= upr]
+  samp <- round(samp)
+  if (length(samp) >= n) {
+    return(sample(samp, n))
+  }  
+  stop(simpleError("Not enough values to sample from. Try increasing nnorm."))
+}
+```
+
+# matrix
+**notes**
+* bdi (non clinical 20 items): items 16 and 18 already on 0-3 scale. purpose not data clean :)
+* oci 18 items
+* fmps 35 items
+* eqeq 6 28 items. but only make 22. I'll populate frequency items after. I could put them in this chunk but they don't need to be included in the covariance matrix because they're not included in scoring/subscores. It's easier for me to do them in another chunk I chose edeq 6 over edeq4 because edeq 4 has lots of yes/nos that aren't included in scoring. 
+
+```{r cor and covMat}
+set.seed(1)
+emptyCorMat <- diag(x = 1, nrow= 95, ncol=95, names = TRUE)
+
+# the 95 scale items
+emptyCorMat[1,2] <- .8
+correlated_relationship <- rnorm(n = 9025, mean = .7, sd = .3)
+correlated_relationship[correlated_relationship > 1] <- .67
+emptyCorMat[,] <- correlated_relationship
+
+lowerTriangle(emptyCorMat) = upperTriangle(emptyCorMat, byrow=TRUE)
+diag(emptyCorMat) <- 1
+
+stddev <- abs(rnorm(95, mean = 3, sd = .5))
+covMat <- stddev %*% t(stddev) * emptyCorMat # multiply standard deviation matrix by transposed standard deviation matrix and the cor mat
+
+# set up mu
+# based on number of items in scale, what I thought the mean/sd should be. specified lower/upper limits
+bdi<-mysamp(n = 20, m = 2.1, s = .3, lwr = 0, upr = 3, nnorm = 1000)
+oci<-mysamp(n = 18, m = 1.9, s = 2.7, lwr = 0, upr = 4, nnorm = 1000)
+fmps <- mysamp(n = 35, m = 3.2, s = 3, lwr = 1, upr = 5, nnorm = 1000)
+edeq <- mysamp(n = 22, m = 2.5, s = 3, lwr = 0, upr = 6, nnorm = 1000)
+# after list: edhistory, gender, race, age, sex assign, date, time. I chose random values for date and time because i'm going to fill them out how I want after. The other numbers are arbitrary as well.
+mu <- c(bdi, oci, fmps, edeq) 
+
+nn <- corpcor::make.positive.definite(covMat) # values for sigma parameter make matrix positive definite
+dat1 <- mvrnorm(n = 260, mu = mu, Sigma = nn, empirical = FALSE) # i have 260 obs set up from demos so that's how many obs I want for measures. rest is applying mu and sigma
+
+# bdi make plausible values because mysamp function isn't perfect
+dat1[,1:20] <- case_when(
+  dat1[,1:20] > 3 ~ 3,
+  dat1[,1:20] < 0 ~0,
+  dat1[,1:20] > 0 | dat1[,1:20] < 3 ~ round(dat1[,1:20])
+)
+
+# oci make plausible values  
+dat1[,21:38] <- case_when(
+  dat1[,21:38] > 4 ~ 4,
+  dat1[,21:38] < 0 ~0,
+  dat1[,21:38] > 0 | dat1[,21:38] < 4 ~ round(dat1[,21:38])
+)
+
+# fmps make plausible values  
+dat1[,39:73] <- case_when(
+  dat1[,39:73] > 5 ~ 5,
+  dat1[,39:73] < 1 ~ 1,
+  dat1[,39:73] > 1 | dat1[,39:73] < 5 ~ round(dat1[,39:73])
+)
+
+# edeq make plausible values  
+dat1[,74:95] <- case_when(
+  dat1[,74:95] > 6 ~ 6,
+  dat1[,74:95] < 0 ~ 0,
+  dat1[,74:95] > 1 | dat1[,74:95] < 6 ~ round(dat1[,74:95])
+)
+
+
+# check
+cor(as.data.frame(dat1))
+
+# extract matrix dat1 as dataframe names measures
+rschdev <- as.data.frame(dat1)
+
+# save var labels
+varnames <- c("bdi_1", "bdi_2", "bdi_3", "bdi_4", "bdi_5", "bdi_6", "bdi_7", "bdi_8", "bdi_9", "bdi_10", "bdi_11", "bdi_12", "bdi_13", "bdi_14", "bdi_15", "bdi_16", "bdi_17", "bdi_18", "bdi_19", "bdi_20", "oci_1", "oci_2", "oci_3", "oci_4", "oci_5", "oci_6", "oci_7", "oci_8", "oci_9", "oci_10", "oci_11", "oci_12", "oci_13", "oci_14", "oci_15", "oci_16", "oci_17", "oci_18", "fmps_1", "fmps_2", "fmps_3", "fmps_4", "fmps_5", "fmps_6", "fmps_7", "fmps_8", "fmps_9", "fmps_10", "fmps_11", "fmps_12", "fmps_13", "fmps_14", "fmps_15", "fmps_16", "fmps_17", "fmps_18", "fmps_19", "fmps_20", "fmps_21", "fmps_22", "fmps_23", "fmps_24", "fmps_25", "fmps_26", "fmps_27", "fmps_28", "fmps_29", "fmps_30", "fmps_31", "fmps_32", "fmps_33", "fmps_34", "fmps_35", "edeq_1", "edeq_2", "edeq_3", "edeq_4", "edeq_5", "edeq_6", "edeq_7", "edeq_8", "edeq_9", "edeq_10", "edeq_11", "edeq_12", "edeq_19", "edeq_20", "edeq_21", "edeq_22", "edeq_23", "edeq_24", "edeq_25", "edeq_26", "edeq_27", "edeq_28")
+# apply varnames to names of measures df
+names(rschdev) <- varnames
+
+# checking my measure/corrs still make sense after all the case_when
+psych::alpha(rschdev[,1:20]) 
+psych::alpha(rschdev[,21:38]) 
+psych::alpha(rschdev[,39:73]) 
+psych::alpha(rschdev[,74:95]) 
+
+# okay so I probably made these items too correlated, but whatever
+
+# clear up global environment
+rm(covMat, dat1, emptyCorMat, nn, bdi, correlated_relationship, edeq, fmps, mu, no_relationship, oci, stddev, varnames)
+
+
+```
+
+# dataframe
+
+## EDEQ frequencies
+```{r}
+rschdev <- rschdev %>% mutate(edeq_global = rowMeans(dplyr::select(., starts_with("edeq_"))))
+
+describe(rschdev, grepl("^edeq", colnames(rschdev)))
+
+rschdev <- rschdev %>% mutate(edhistory = ifelse(edeq_global>=3, paste("Yes"), paste("No")))
+
+rschdev$edhistory <- as.factor(rschdev$edhistory)
+
+# 13 Over the past 28 days, how many times have you eaten what other people would regard as an unusually large amount of food (given the circumstances)?
+rschdev$edeq_13 <- NA
+rschdev <- rschdev %>% mutate(
+  edeq_13 = ifelse(edeq_global>2.5, sample(c(1:3, 6, 8, 10), prob = c(.2, .3, .2, .1, .1, .1)),
+                   sample(0:2, prob = c(.7, .2, .1), replace = TRUE))) %>% 
+  relocate(edeq_13, .after = edeq_12)
+
+# On how many of these times did you have a sense of having lost control over your eating (at the time that you were eating)?
+rschdev$edeq_14 <- NA
+rschdev <- rschdev %>% mutate(
+  edeq_14 = ifelse(edeq_global >= 4.0, paste(edeq_13),
+                   ifelse(between(edeq_global, 2.5, 3.99), paste(round(edeq_13/2)),
+                          ifelse(between(edeq_global, 1.5, 2.49), paste(round(edeq_13*.25)), 0)))) %>% 
+  relocate(edeq_14, .after = edeq_13)
+
+# 15 Over the past 28 days, on how many DAYS have such episodes of overeating occurred (i.e., you have eaten an unusually large amount of food and have had a sense of loss of control at the time)?
+rschdev$edeq_15 <- NA
+rschdev <- rschdev %>% mutate(
+  edeq_15 = ifelse(edeq_global >= 2.5, paste(edeq_13),
+                   ifelse(between(edeq_global, 1.5, 2.49), paste(round(edeq_13*.25)), 0))) %>% 
+  relocate(edeq_15, .after = edeq_14)
+
+# 16 Over the past 28 days, how many times have you made yourself sick (vomit) as a means of controlling your shape or weight?
+rschdev$edeq_16 <- NA
+rschdev <- rschdev %>% mutate(
+  edeq_16 = ifelse(edeq_global >= 4, sample(0:28, replace = TRUE),
+                   ifelse(between(edeq_global, 2.5, 3.99), sample(0:5, replace = TRUE), 0))) %>% 
+  relocate(edeq_16, .after = edeq_15)
+
+# 17 Over the past 28 days, how many times have you taken laxatives as a means of controlling your shape or weight?
+rschdev$edeq_17 <- NA
+rschdev <- rschdev %>% mutate(
+  edeq_17 = ifelse(edeq_global >= 4, sample(0:4, prob = c(.6, .1, .1, 0, .2), replace = TRUE),
+                   ifelse(between(edeq_global, 3.5, 3.99), sample(0:2, prob = c(.7, .1, .2), replace = TRUE), 
+                          ifelse(edeq_global < 3.5, 0, 0)))) %>% 
+  relocate(edeq_17, .after = edeq_16)
+
+# 18 Over the past 28 days, how many times have you exercised in a “driven” or “compulsive” way as a means of controlling your weight, shape or amount of fat, or to burn off calories?
+rschdev$edeq_18 <- NA
+rschdev <- rschdev %>% mutate(
+  edeq_18 = ifelse(edeq_global >= 4, sample(5:28, replace = TRUE),
+                   ifelse(between(edeq_global, 2.5, 3.99), sample(2:9,replace = TRUE), 
+                          ifelse(edeq_global < 2.5, sample(0:4, replace = TRUE), 0)))) %>% 
+  relocate(edeq_18, .after = edeq_17)
+
+# check
+rschdev %>% 
+ filter(edeq_global > 4) %>% 
+  dplyr::select(edeq_13:edeq_18, edeq_global) 
+
+rschdev %>% 
+ filter(between(edeq_global, 2.5, 4)) %>% 
+  dplyr::select(edeq_13:edeq_18, edeq_global) 
+
+rschdev %>% 
+ filter(edeq_global < 2.5) %>% 
+  dplyr::select(edeq_13:edeq_18, edeq_global) 
+```
+
+## demos
+```{r}
+set.seed(1234)
+rschdev$race <- sample(1:5, 260, prob = c(.6, .15, .12, .07, .06), replace = TRUE) # white, Black, Hispanic, bi/multi, asian
+rschdev$race <- as.factor(rschdev$race)
+table(rschdev$race)
+rschdev$race <- recode(rschdev$race, "1" = "White, not of Hispanic origin", "2"="Black, not of Hispanic origin", "3"= "Hispanic", "4"= "Multiracial, Biracial, Multiple Broad Categories", "5"="Asian American")
+```
+### gender
+```{r}
+set.seed(1) # reproduce same gender distribution
+rschdev$gender <- sample(1:5, 260, prob=c(8, 20, 60, 7, 5), replace = T)
+rschdev <- rschdev %>% 
+  mutate(gender = factor(gender))
+# check factor(gender, labels = c("cis man", "nonbinary", "cis woman", "trans man", "trans woman"
+table(rschdev$gender)
+#labels = c("cis man", "nonbinary", "cis woman", "trans man", "trans woman"
+# 1   2   3   4   5 
+#  16  56 158  21   9 
+
+test <- rschdev
+test <- test %>% mutate(gender_test = gender) %>% relocate(gender_test, .after = gender)
+
+test %>% filter(edeq_global>=3.25) %>% count()  # 110
+
+x = c(rep("cis man", 3), rep("nonbinary", 40), rep("cis woman", 45), rep("trans man", 17), rep("trans woman", 5))
+
+y = c(rep("cis man", 11), rep("nonbinary", 16), rep("cis woman", 113), rep("trans man", 6), rep("trans woman", 4))
+
+test$gender_test <- NA
+test$gender_test <- ifelse(test$edeq_global >= 3.25, x, "tbd")
+
+#test <- test %>% mutate(gender_test = ifelse(edeq_global >= 3.25, paste(c(rep(1, length.out = 5), rep(2, length.out = 40), rep(3, length.out = 45), rep(4, length.out = 15), rep(5, length.out = 5))), paste(c(rep(1, length.out = 11), rep(2, length.out = 16), rep(3, length.out = 113), rep(4, length.out = 6), rep(5, length.out = 4)))))
+
+
+test$gender_test <- as.factor(test$gender_test)
+test$gender_test <- dplyr::recode(test$gender_test, "1"= "cis man", "2"= "nonbinary", "3"="cis woman", "4"="trans man", "5"="trans woman")
+test %>% group_by(gender_test) %>% filter(edeq_global>=3.25) %>% count()
+
+table(test$gender_test)
+table(test$gender)
+
+test <- test[, -which(colnames(test)=="gender")]
+
+test <- test %>% rename("gender"="gender_test") %>% relocate(gender, .after = sexassign)
+
+test %>% filter(edeq_global >= 3.25) %>% count()
+test %>% group_by(gender_test) %>% filter(edeq_global >= 3.25) %>% count()
+
+rschdev <- test # re do sex assigned, ht, wt again jic
+```
+### sex assigned
+```{r}
+set.seed(2) # reproduce same sex assigned distribution
+rschdev <- rschdev %>% 
+  mutate(sexassign = 
+           ifelse(gender=="trans woman", paste("male"),
+                  ifelse(gender=="trans man", sample(c("female", "intersex"), 260, prob = c(90, 10), replace = T),
+                         ifelse(gender=="trans woman", "male",
+                                ifelse(gender=="nonbinary", sample(c("female", "male", "intersex"), 260, prob = c(60, 30, 10), replace = T),
+                                       ifelse(gender=="agender", sample(c("female", "male"), 260, prob = c(70, 30), replace = T),
+                                              ifelse(gender== "cis woman", "female",
+                                                     ifelse(gender=="cis man", "male", "female"))))))))
+
+rschdev <- rschdev %>% relocate(start) %>% relocate(initials, .after=start) %>%  relocate(age) %>% relocate(sexassign, .after = age) %>% relocate(gender, .after = sexassign) %>% relocate(race, .after = gender) %>% relocate(edhistory, .before = bdi_1)
+
+table(rschdev$sexassign)
+  # female intersex     male 
+  #    198       12       50 
+```
+### weight height age
+```{r}
+set.seed(7) # reproduce weight
+rschdev <- rschdev %>% 
+  mutate(weight = 
+           ifelse(sexassign=="female", beta_dist(n = 198, mean = 140, var = 800, min = 94, max = 285),
+                  ifelse(sexassign=="intersex", beta_dist(n = 12, mean = 176, var = 4, min = 150, max = 210),
+                         ifelse(sexassign=="male", beta_dist(n = 50, mean = 197, var = 7.5, min = 190, max = 260), 170)))) %>% relocate(weight, .after = race)
+
+
+set.seed(6) # reproduce height
+rschdev <- rschdev %>% 
+  mutate(height = 
+           ifelse(sexassign=="female", beta_dist(n = 198, mean = 64, var = 8.5, min = 60, max = 71),
+                  ifelse(sexassign=="intersex", beta_dist(n = 12, mean = 67, var = 14, min = 64, max = 72),
+                         ifelse(sexassign=="male", beta_dist(n = 50, mean = 70, var = 2.5, min = 66, max = 74), 64)))) %>% relocate(height, .before = weight)
+
+
+# check
+rschdev %>% 
+  group_by(sexassign) %>% 
+  summarise(mean(height), sd(height), min(height), max(height)) # mean = 64.14, sd = 2.68, min = 60, max = 71
+
+rschdev %>% 
+  group_by(sexassign) %>% 
+  summarise(mean(weight), sd(weight), min(weight), max(weight))
+
+# bmi
+rschdev <- rschdev %>% 
+  mutate(bmi = (weight/(height^2))*703) %>% 
+  relocate(bmi, .after = weight)
+
+# call function to create age variable
+rschdev$age <- beta_dist(n = 260, mean = 27.3, var = 6.5, min = 18, max = 65)
+```
+
+## initials, date, time
+
+I don't set seeds here, so initials, dates, times will likely change, though not ideal, I'm not worried about it. 
+```{r idt, message=FALSE, warning=FALSE}
+rschdev <- rschdev %>%
+  sjmisc::move_columns("start", "initials", .before = age) 
+
+# randomly generate 260 sets initials (2 letters) capitalized '[A-Z]'
+rschdev$initials <- stri_rand_strings(260, 2, '[A-Z]')
+
+# randomly sample dates between jan 1 and jul 14, 2021.
+rschdev$start <- sample(seq(as.Date("2021/01/01"), as.Date("2021/07/14"), length.out=260)) 
+
+# time
+# sample hour (I used 24 clock), min, second (separated by colons). replace values = T because obvi we're going to reuse some numbers (i.e., there are more participants than there are hours or minutes).
+rschdev$time <- paste(sample(1:23,260,replace=T), ":", sample(seq(0,59), 260, replace=T), ":", sample(seq(0,59), 260, replace=T), sep="") 
+rschdev<-rschdev %>% relocate(time, .after = start)
+
+# combine date and time. I made time zone UTC because doesn't observe DST/to avoid parsing errors and NAs. If you want to leave date and time in separate columns, do not run lines 45 or 51.
+rschdev$start <- as.POSIXct(paste(rschdev$start, rschdev$time), format="%Y-%m-%d %H:%M:%S", tz="UTC")
+
+# alright, now remove time col because they're collapsed into with date column ("start") similar to what we would see in a redcap  export
+rschdev <- rschdev[,-which(colnames(rschdev)=="time")]
+```
+
+# Scoring measures
+### bdi
+```{r}
+# this should be complete dataset but checking for missingness just in case
+sum(is.na(rschdev))/prod(dim(rschdev)) # 0 good.
+
+# bdi non clinical. again, we're going as if sleep/appetite have been recoded already
+describe(rschdev[,grep("^bdi", colnames(rschdev))]) # 0-3 good
+str(rschdev[,grep("^bdi", colnames(rschdev))]) 
+
+rschdev <- rschdev %>%
+  mutate(bdi_total = rowSums(dplyr::select(., dplyr::starts_with("bdi_")))) %>% 
+  relocate(bdi_total, .after = bdi_20)
+```
+
+### oci
+```{r}
+# oci
+describe(rschdev[,grep("^oci", colnames(rschdev))]) # 0-4 good
+
+# Subscales: 
+# Washing = 5, 11, 17
+rschdev$oci_washing <- rowSums(sapply(rschdev[,c("oci_5","oci_11","oci_17")], as.numeric), na.rm=TRUE)
+
+# Obsessing = 6, 12, 18
+rschdev$oci_obsess <- rowSums(sapply(rschdev[,c("oci_6","oci_12","oci_18")], as.numeric), na.rm=TRUE)
+
+# Hoarding = 1, 7, 13
+rschdev$oci_hoard <- rowSums(sapply(rschdev[,c("oci_1","oci_7","oci_13")], as.numeric), na.rm=TRUE)
+
+# Ordering = 3, 9, 15
+rschdev$oci_order <- rowSums(sapply(rschdev[,c("oci_3","oci_9","oci_15")], as.numeric), na.rm=TRUE)
+
+# Checking = 2, 8, 14
+rschdev$oci_checking <- rowSums(sapply(rschdev[,c("oci_2","oci_8","oci_14")], as.numeric), na.rm=TRUE)
+
+# Neutralizing = 4, 10, 16
+rschdev$oci_neut <- rowSums(sapply(rschdev[,c("oci_4","oci_10","oci_16")], as.numeric), na.rm=TRUE)
+
+# OCI total score
+rschdev$oci_total <- rowSums(sapply(rschdev[, c(which(colnames(rschdev) == "oci_washing"), which(colnames(rschdev) == "oci_obsess"), which(colnames(rschdev) == "oci_hoard"), which(colnames(rschdev) == "oci_order"), which(colnames(rschdev) == "oci_checking"), which(colnames(rschdev) == "oci_neut"))], as.numeric), na.rm=TRUE)
+
+rschdev <- rschdev %>%
+  sjmisc::move_columns("oci_washing", "oci_obsess", "oci_hoard", "oci_order", "oci_checking", "oci_neut", "oci_total", .after = oci_18) 
+```
+
+### fmps
+```{r}
+describe(rschdev[,grep("^fmps", colnames(rschdev))]) # 1-5 good
+str(rschdev[,grep("^fmps", colnames(rschdev))]) 
+
+#	Concern Over Mistakes (COM): 9, 10, 13, 14, 18, 21, 23, 25, 34
+rschdev$fmps_COM <- rowSums(sapply(rschdev[,c("fmps_9", "fmps_10", "fmps_13", "fmps_14", "fmps_18", "fmps_21", "fmps_23", "fmps_25", "fmps_34")], as.numeric))
+
+#	Doubts About Actions (DA): 17, 28, 32, 33
+rschdev$fmps_DA <- rowSums(sapply(rschdev[,c("fmps_17", "fmps_28", "fmps_32", "fmps_33")], as.numeric))
+
+#	Parental Criticisms (PC): 3, 5, 22, 35
+rschdev$fmps_PC <- rowSums(sapply(rschdev[,c("fmps_3", "fmps_5", "fmps_22", "fmps_35")], as.numeric))
+
+# Parental Expectations (PE): 1, 11, 15, 20, 26 
+rschdev$fmps_PE <- rowSums(sapply(rschdev[,c("fmps_1", "fmps_11", "fmps_15", "fmps_20", "fmps_26")], as.numeric))
+
+# Organization (O): 2, 7, 8, 27, 29, 31
+rschdev$fmps_O <- rowSums(sapply(rschdev[,c("fmps_2", "fmps_7", "fmps_8", "fmps_27", "fmps_29", "fmps_31")], as.numeric))
+
+# Personal Standards (PS): 4, 6, 12, 16, 19, 24, 30
+rschdev$fmps_PS <- rowSums(sapply(rschdev[,c("fmps_4", "fmps_6", "fmps_12", "fmps_16", "fmps_19", "fmps_24", "fmps_30")], as.numeric))
+
+# Maladaptive Evaluative Concerns (MEC): COM + DA + PC + PE
+rschdev$fmps_MEC <- rowSums(sapply(rschdev[,c("fmps_COM", "fmps_DA", "fmps_PC", "fmps_PE")], as.numeric))
+
+# Pure Personal Standards (PPS): 12, 16, 19, 24, 30 
+rschdev$fmps_PPS <- rowSums(sapply(rschdev[,c("fmps_12", "fmps_16", "fmps_19", "fmps_24", "fmps_30")], as.numeric))
+
+# Total Score: COM + DA + PC + PE + PS
+rschdev$fmps_total <- rowSums(sapply(rschdev[,c("fmps_COM", "fmps_DA", "fmps_PC", "fmps_PE", "fmps_PS")], as.numeric))
+
+rschdev <- rschdev %>%
+  sjmisc::move_columns("fmps_COM", "fmps_DA", "fmps_PC", "fmps_PE", "fmps_O", "fmps_PS", "fmps_MEC", "fmps_PPS", "fmps_total", .after = fmps_35) 
+```
+
+### edeq 6
+```{r}
+describe(rschdev[,grep("^ede", colnames(rschdev))]) # 0-6 good. except I see tht 14 and 15 are characters and should be numeric
+rschdev$edeq_14 <- as.numeric(rschdev$edeq_14)
+rschdev$edeq_15 <- as.numeric(rschdev$edeq_15)
+# check again
+describe(rschdev[,grep("^ede", colnames(rschdev))])
+str(rschdev[,grep("^ede", colnames(rschdev))])  # we're good
+
+rschdev <- rschdev %>%
+  mutate(edeq_restraint = as.numeric(rowMeans(dplyr::select(., c(edeq_1:edeq_5)))))
+
+# eating concern subscale items 7, 9, 19, 21, 20
+rschdev <- rschdev %>%
+  mutate(edeq_eatconcern = as.numeric(rowMeans(dplyr::select(., c(edeq_7, edeq_9, edeq_19, edeq_20:edeq_21)))))
+
+# Shape Concern: 6, 8, 23, 10, 26, 27, 28, 11
+rschdev <- rschdev %>%
+  mutate(edeq_shapeconcern = as.numeric(rowMeans(dplyr::select(., c(edeq_6, edeq_8, edeq_23, edeq_10, edeq_26:edeq_27, edeq_11)))))
+
+# Weight Concern: 22, 24, 8, 25, 12
+rschdev <- rschdev %>%
+  mutate(edeq_weightconcern = as.numeric(rowMeans(dplyr::select(., c(edeq_22, edeq_24, edeq_8, edeq_25, edeq_12)))))
+ 
+# global score
+rschdev <- rschdev %>%
+  mutate(edeq_global = as.numeric(rowMeans(dplyr::select(., c(edeq_restraint, edeq_eatconcern, edeq_shapeconcern, edeq_weightconcern)))))
+ 
+rschdev <- rschdev %>%
+  sjmisc::move_columns("edeq_restraint", "edeq_eatconcern", "edeq_shapeconcern", "edeq_weightconcern", "edeq_global", .after = edeq_28) 
+
+```
+
+# Var labels
+```{r message=FALSE, warning=FALSE}
+if (!require("expss")) {install.packages("expss"); require("expss")} # adding this late because it masks too many packages/functions to upload initially 
+
+rschdev <- apply_labels(rschdev, bdi_1 = "Sadness",
+                        bdi_2 = "Pessimism",
+                        bdi_3 = "Past failure",
+                        bdi_4 = "Loss of pleasure",
+                        bdi_5 = "Guilty feelings",
+                        bdi_6 = "Punishment feelings",
+                        bdi_7 = "Self-dislike",
+                        bdi_8 = "Self-criticalness",
+                        bdi_9 = "Crying",
+                        bdi_10 = "Agitation",
+                        bdi_11 = "Loss of interest",
+                        bdi_12 = "Indecisiveness",
+                        bdi_13 = "Worthlessness",
+                        bdi_14 = "Loss of energy",
+                        bdi_15 = "Changes in sleeping patterns",
+                        bdi_16 = "Irritability",
+                        bdi_17 = "Changes in appetite",
+                        bdi_18 = "Concentration difficulty",
+                        bdi_19 = "Tiredness or fatigue",
+                        bdi_20 = "Loss of interest in sex",
+                        bdi_total = "BDI non clinical total score sum",
+                        oci_1 = "I have saved up so many things that they get in the way.",
+                        oci_2 = "I check things more often than necessary.",
+                        oci_3 = "I get upset if objects are not arranged properly.",
+                        oci_4 = "I feel compelled to count while I am doing things.",
+                        oci_5 = "I find it difficult to touch an object when I know it has been touched by strangers or certain people.",
+                        oci_6 = "I find it difficult to control my own thoughts.",
+                        oci_7 = "I collect things I don’t need.",
+                        oci_8 = "I repeatedly check doors, windows, drawers, etc.",
+                        oci_9 = "I get upset if others change the way I have arranged things.",
+                        oci_10 = "I feel I have to repeat certain numbers.",
+                        oci_11 = "I sometimes have to wash or clean myself simply because I feel contaminated",
+                        oci_12 = "I am upset by unpleasant thoughts that come into my mind against my will.",
+                        oci_13 = "I avoid throwing things away because I am afraid I might need them later.",
+                        oci_14 = "I repeatedly check gas and water taps and light switches after turning them off.",
+                        oci_15 = "I need things to be arranged in a particular order.",
+                        oci_16 = "I feel that there are good and bad numbers.",
+                        oci_17 = "I wash my hands more often and longer than necessary.",
+                        oci_18 = "I frequently get nasty thoughts and have difficulty in getting rid of them.",
+                        oci_washing = "OCI washing subscale sum",
+                        oci_obsess = "OCI obsessing subscale sum",
+                        oci_hoard = "OCI hoarding subscale sum",
+                        oci_order = "OCI ordering subscale sum",
+                        oci_checking = "OCI checking subscale sum",
+                        oci_neut = "OCI neutralizing subscale sum",
+                        oci_total = "OCI total score sum",
+                        fmps_1 = "1. My parents set very high standards for me.",
+                        fmps_2 = "2. Organization is very important to me.",
+                        fmps_3 = "3. As a child, I was punished for doing things less than perfectly.",
+                        fmps_4 = "4. If I do not set the highest standards for myself, I am likely to end up a second rate person.",
+                        fmps_5 = "5. My parents never tried to understand my mistakes.",
+                        fmps_6 = "6. It is important to me that I be thoroughly competent in everything I do.",
+                        fmps_7 = "7. I am a neat person.",
+                        fmps_8 = "8. I try to be an organized person.",
+                        fmps_9 = "9. If I fail at work/school, I am a failure as a person.",
+                        fmps_10 = "10. I should be upset if I make a mistake.",
+                        fmps_11 = "11. My parents wanted me to be the best at everything.",
+                        fmps_12 = "12. I set higher goals for myself than most people.",
+                        fmps_13 = "13. If someone does a task at work/school better than me, then I feel like I failed the whole task.",
+                        fmps_14 = "14. If I fail partly, it is as bad as being a complete failure.",
+                        fmps_15 = "15. Only outstanding performance is good enough in my family.",
+                        fmps_16 = "16. I am very good at focusing my efforts on attaining a goal.",
+                        fmps_17 = "17. Even when I do something very carefully, I often feel that it is not quite done right.",
+                        fmps_18 = "18. I hate being less than the best at things.",
+                        fmps_19 = "19. I have extremely high goals.",
+                        fmps_20 = "20. My parents have expected excellence from me.",
+                        fmps_21 = "21. People will probably think less of me if I make a mistake.",
+                        fmps_22 = "22. I never felt like I could meet my parents expectations.",
+                        fmps_23 = "23. If I do not do as well as other people, it means I am an inferior human being.",
+                        fmps_24 = "24. Other people seem to accept lower standards from themselves than I do.",
+                        fmps_25 = "25. If I do not do well all the time, people will not respect me.",
+                        fmps_26 = "26. My parents have always had higher expectations for my future than I have.",
+                        fmps_27 = "27. I try to be a neat person.",
+                        fmps_28 = "28. I usually have doubts about the simple everyday things I do.",
+                        fmps_29 = "29. Neatness is very important to me.",
+                        fmps_30 = "30. I expect higher performance in my daily tasks than most people.",
+                        fmps_31 = "31. I am an organized person.",
+                        fmps_32 = "32. I tend to get behind in my work because I repeat things over and over.",
+                        fmps_33 = "33. It takes me a long time to do something right.",
+                        fmps_34 = "34. The fewer mistakes I make, the more people will like me.",
+                        fmps_35 = "35. I never felt like I could meet my parents standards.",
+                        fmps_COM = "FMPS concern over mistakes subscale sum",
+                        fmps_DA = "FMPS doubts about actions subscale sum",
+                        fmps_PC = "FMPS parental criticisms subscale sum",
+                        fmps_PE = "FMPS parental expectations subscale sum",
+                        fmps_O = "FMPS organization subscale sum",
+                        fmps_PS = "FMPS personal standards subscale sum",
+                        fmps_MEC= "FMPS maladaptive evaluative concerns subscale sum",
+                        fmps_PPS = "FMPS pure personal standards subscale sum",
+                        fmps_total = "FMPS total score sum",
+                        edeq_1 = "Have you been deliberately trying to limit the amount of food you eat to influence your shape or weight (whether or not you have succeeded)?",
+                        edeq_2 = "Have you gone for long periods of time (8 waking hours or more) without eating anything at all in order to influence your shape or weight?",
+                        edeq_3 = "Have you tried to exclude from your diet any foods that you like in order to influence your shape or weight (whether or not you have succeeded)?",
+                        edeq_4 = "Have you tried to follow definite rules regarding your eating (for example, a calorie limit) in order to influence your shape or weight (whether or not you have succeeded)?",
+                        edeq_5 = "Have you had a definite desire to have an empty stomach with the aim of influencing your shape or weight?",
+                        edeq_6 = "Have you had a definite desire to have a totally flat stomach?",
+                        edeq_7 = "Has thinking about food, eating or calories made it very difficult to concentrate on things you are interested in (for example, working, following a conversation, or reading)?",
+                        edeq_8 = "Has thinking about shape or weight made it very difficult to concentrate on things you are interested in (for example, working, following a conversation, or reading)?",
+                        edeq_9 = "Have you had a definite fear of losing control over eating?",
+                        edeq_10 = "Have you had a definite fear that you might gain weight?",
+                        edeq_11 = "Have you felt fat?",
+                        edeq_12 = "Have you had a strong desire to lose weight?",
+                        edeq_13 = "Over the past 28 days, how many times have you eaten what other people would regard as an unusually large amount of food (given the circumstances)?",
+                        edeq_14 = "On how many of these times did you have a sense of having lost control over your eating (at the time that you were eating)?",
+                        edeq_15 = "Over the past 28 days, on how many DAYS have such episodes of overeating occurred (i.e., you have eaten an unusually large amount of food and have had a sense of loss of control at the time)?",
+                        edeq_16 = "Over the past 28 days, how many times have you made yourself sick (vomit) as a means of controlling your shape or weight?",
+                        edeq_17 = "Over the past 28 days, how many times have you taken laxatives as a means of controlling your shape or weight?",
+                        edeq_18 = "Over the past 28 days, how many times have you exercised in a “driven” or “compulsive” way as a means of controlling your weight, shape or amount of fat, or to burn off calories?",
+                        edeq_19 = "Over the past 28 days, on how many days have you eaten in secret (ie, furtively)? Do not count episodes of binge eating",
+                        edeq_20 = "On what proportion of the times that you have eaten have you felt guilty (felt that you've done wrong) because of its effect on your shape or weight? Do not count episodes of binge eating",
+                        edeq_21 = "Over the past 28 days, how concerned have you been about other people seeing you eat? Do not count episodes of binge eating",
+                        edeq_22 = "Has your weight influenced how you think about (judge) yourself as a person?",
+                        edeq_23 = "Has your shape influenced how you think about (judge) yourself as a person?",
+                        edeq_24 = "How much would it have upset you if you had been asked to weigh yourself once a week (no more, or less, often) for the next four weeks?",
+                        edeq_25 = "How dissatisfied have you been with your weight?",
+                        edeq_26 = "How dissatisfied have you been with your shape?",
+                        edeq_27 = "How uncomfortable have you felt seeing your body (for example, seeing your shape in the mirror, in a shop window reflection, while undressing or taking a bath or shower)?",
+                        edeq_28 = "How uncomfortable have you felt about others seeing your shape or figure (for example, in communal changing rooms, when swimming, or wearing tight clothes)?",
+                        edeq_restraint = "EDE-Q 6 restraint subscale",
+                        edeq_eatconcern = "EDE-Q 6 eating concern subscale",
+                        edeq_weightconcern = "EDE-Q 6 weight concern subscale",
+                        edeq_shapeconcern = "EDE-Q 6 shape concern subscale",
+                        edeq_global = "EDE-Q 6 global")
+
+detach("package:expss", unload = TRUE) # unload expss jic.
+```
+
+# write csv
+```{r}
+name= 'RschDev_xsectldata'
+filetype= '.csv'
+filename= paste(name, Sys.Date(), filetype, sep='')
+
+write.csv(rschdev,file=filename, row.names = FALSE)
+```
+
+# first sim fail
+
+leaving code just in case it's useful
+tried {faux}::`sim_df`    
+[link to faux cran](https://cran.r-project.org/web/packages/faux/vignettes/sim_df.html)
+
+```{r message=FALSE, warning=FALSE}
+# bring in undergrad screener (through fall 2020). I called file.choose() because this csv is not saved in the same folder as this markdown. because the file paths differ, this will not be reproducible (e.g., couldn't just knit or run this chunk)
+# file.choose()
+# ugs_2020 <- read.csv("/Users/clairecusack/Dropbox/EATLAB/Undergrad screener data file/DATA/Fall 2020 Cleaning/Claire R cleaning/Fall2020_cleanedandscored_cec_2021-07-06.csv", header = TRUE, sep = ",", stringsAsFactors = FALSE)
+# 
+# # keep cols with measures we want to include
+# ugs_cut <- ugs_2020 %>% 
+#   select(starts_with("bdi"), starts_with("oci"), starts_with("fmps"), starts_with("ede_q")) %>% 
+#   select(., -"ede_q_42") # remove ede_q_42 because sim_df simulates data using a correlation matrix, so it won't be able to handle generating character strings. Later I'll add a ede_q_42 back in and just fill with NAs
+# 
+# # check
+# head(ugs_cut) # yep, cols I want.
+# 
+# # try faux::sim_df https://cran.r-project.org/web/packages/faux/vignettes/sim_df.html
+# set.seed(1234)
+# # simulated_data <- sim_df(ugs_cut, n = 260) # error: correlation matrix not positive definite
+# 
+# # try removing subscale and total scores. These are columns that end in either an upper or lower case letter. I'll later calculate subscale and total scores with the simulated data
+# ugs_cut <- ugs_cut[, -grep("[a-zA-Z]$", colnames(ugs_cut))] # went from 136 cols to 114
+# # check
+# head(ugs_cut) # no subscale or total scores.
+# 
+# # try simulating data again
+# simulated_data <- sim_df(ugs_cut, n = 260) # runs
+# # look at it
+# head(simulated_data) # these are numbers, and we need integers.
+```
+
+problem solve
+
+```{r}
+# simulated_data <- simulated_data %>% 
+#       mutate_each(funs(if(is.numeric(.)) as.integer(.) else .))
+# 
+# # checking things
+# # str(test) # integers.
+# # check bdi integers. bdi scale is 0-3
+# describe(simulated_data[,grep("^bdi", colnames(simulated_data))])
+# # 2 issues: across min = -1, and bdi_17 max = 4. Now i'll recode -1's as 0's and 4's as 3's.
+# 
+# simulated_data <- simulated_data %>% 
+#   mutate(across(starts_with("bdi"), ~ recode(., `-1`=0, `0`=0, `1`=1, `2`=2, `3`=3, `4`=3)))
+# 
+# # check oci integers. oci scale is 0-4
+# describe(simulated_data[,grep("^oci", colnames(simulated_data))]) 
+# # min = -1, max = 5.
+# 
+# simulated_data <- simulated_data %>% 
+#   mutate(across(starts_with("oci"), ~ recode(., `-1`=0, `0`=0, `1`=1, `2`=2, `3`=3, `4`=4, `5`=4)))
+# 
+# # check fmps integers. fmps scale is 1-5
+# describe(simulated_data[,grep("^fmps", colnames(simulated_data))]) 
+# # min = -1, max = 7.
+# 
+# simulated_data <- simulated_data %>% 
+#   mutate(across(starts_with("fmps"), ~ recode(., `-1`=1, `0`=1, `1`=1, `2`=2, `3`=3, `4`=4, `5`=5, `6`=5, `7`=5)))
+# 
+# # check edeq integers. edeq items PICK UP HERE
+# # describe(simulated_data[,grep("^edeq", colnames(simulated_data))]) 
+# # # min = -1, max = 7.
+# # 
+# # simulated_data <- simulated_data %>% 
+# #   mutate(across(starts_with("fmps"), ~ recode(., `-1`=1, `0`=1, `1`=1, `2`=2, `3`=3, `4`=4, `5`=5, `6`=5, `7`=5)))
+
+```
+
