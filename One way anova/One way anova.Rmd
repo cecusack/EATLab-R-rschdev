@@ -1,0 +1,227 @@
+---
+title: "One way anova"
+author: "CCusack"
+date: "7/25/2021"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 6
+    toc_float: true
+    number_sections: true
+    code_folding: hide
+    theme: cosmo
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  fig.width=9, fig.height=3.5, fig.retina=3,
+  out.width = "100%",
+  cache = FALSE,
+  echo = TRUE,
+  message = FALSE, 
+  warning = FALSE,
+  hiline = TRUE
+)
+```
+
+Sometimes we want to know about between group differences when groups have more than 2 levels. Using the research dev cross sectional data, you can ask does eating disorder psychopathology (continuous outcome) differ by gender (categorical IV with 7 levels). In this markdown, we will walk through the steps to running a between-subjects one-way anova in R. 
+
+Q1: Does ED psychopathology differ by gender?
+
+First, you need to upload packages and data.
+# set up
+```{r set up, message=FALSE, warning=FALSE}
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")} # a lifeline
+if (!require("psych")) {install.packages("psych"); require("psych")} # also v good
+if (!require("VIM")) {install.packages("VIM"); require("VIM")} # also v good
+if (!require("rstatix")) {install.packages("rstatix"); require("rstatix")} # also v good stats
+if (!require("ggpubr")) {install.packages("ggpubr"); require("ggpubr")} # more vis
+if (!require("effectsize")) {install.packages("effectsize"); require("effectsize")} # more vis
+
+EDsim <- read.csv("RschDev_xsectldata2021-07-25.csv", header = TRUE, sep = ",", stringsAsFactors = TRUE)
+```
+
+# get to know your data
+
+Within this chunk, I get a sense of missingness and variables of interest, so for this question specifically, I want to know our participants' gender and the shape of their EDE-Q data.
+
+## missingness
+```{r}
+# missingness across the dataset
+sum(is.na(EDsim))/prod(dim(EDsim)) # getting a v small number close to zero. probably a computer error because I know I simulated complete data :) 
+
+# look at it
+aggr(EDsim, numbers = TRUE, prop = c(TRUE, FALSE), col = c("bisque2", "darkcyan")) # looks like we're missing some in one of the early columns, but when I View(EDsim) it looks fine
+
+# note if you have more missing data, you'll want to explore missingness more. Areas to do this include: 
+parcoordMiss(EDsim, highlight = 'edeq_global', alpha = 0.6, col = c("bisque2","darkcyan"))
+# also look into spline plots. If you need help, ask.
+```
+
+## gender
+```{r}
+# get counts
+table(EDsim$gender, useNA = "ifany") # because we don't have missing data, this arg isn't relevant, but I'm including because you generally want this set
+
+# get proportion
+prop.table(table(EDsim$gender, useNA = "ifany"))
+
+# you can also visualize this. One way is a bar chart. Note: there are many ways to visualize this. You can spend hours in ggplot if you want. That said, if you want a pie chart, I also have code for that. If you want to get fancy with colors but feel lost, see the gg markdown or ask :) 
+
+EDsim %>% 
+  count(gender) %>% # for future analyses, swap gender with whatever your categorical variable is
+  ggplot(aes(x = gender, y = n, fill = gender)) +
+    geom_bar(stat = "identity") +
+    geom_text(aes(label= paste(round((n/sum(n))*100, digits = 1), "%"), size = 15), size = 9) + # paste percentage on plot
+    theme_bw() + 
+    ggtitle("Gender") +
+    theme(plot.title = element_text(hjust = 0.5, size = 22, face = "bold"),
+          axis.text=element_text(size=20),
+          legend.position = "none",
+          panel.border = element_blank(),
+          panel.grid.major = element_blank(), 
+          panel.grid.minor = element_blank(),
+          panel.background = element_rect(fill = "transparent",colour = NA),
+          plot.background = element_rect(fill = "transparent",colour = NA),
+          axis.line = element_line(colour = "black")) +
+  labs(x="", y="Count", aes(size=1))
+```
+## EDEQ (continuous outcomes)
+
+I would get a sense of the descriptive statistics for you DV, so for this question it's EDEQ scores. I would also plot this to see the shape of the data.
+```{r}
+describe(EDsim$edeq_global) # mean = 2.36, sd = .67, median = 2.28, min = .89, max = 4.61
+
+# see everyone's distribution 
+
+EDsim %>% 
+  ggplot(aes(edeq_global), fill = "lightgray") +
+  geom_density(aes(y = ..count..), fill = "lightgray") +
+  geom_vline(aes(xintercept = mean(edeq_global)),
+             linetype = "dashed", size = .6, color = "#FC4E07") +
+  geom_text(aes(x= 2.6, y= 155, label= paste("M =", round(describe(EDsim$edeq_global)$mean, digits = 2))), size = 10)
+
+# what we see here, is it's looking pretty close to a normal distribution with a positive skew
+
+# or a boxplot. good for outliers
+EDsim %>% 
+  ggplot(aes(x=edeq_global)) + 
+  geom_boxplot()
+
+# what we see here are 3 outliers
+
+```
+In the chunk above, we get a sense of edeq scores overall. let's look at them by group
+
+```{r}
+# get to know summaries by group
+EDsim %>% 
+  group_by(gender) %>%
+  summarise(
+    count = n(),
+    mean = mean(edeq_global, na.rm = TRUE),
+    sd = sd(edeq_global, na.rm = TRUE)
+  ) # looking similar
+
+# but we have lots of columns, let's make 3 for simplicity. NOTE: IT IS NOT A GOOD IDEA TO COLLAPSE GENDER LIKE THIS UNLESS YOU HAVE GOOD REASON. This is for demonstration purposes
+EDsim <- EDsim %>% 
+  mutate(gender_agg = ifelse(gender == "agender", "trans and/or nb",
+                             ifelse(gender == "nonbinary", "trans and/or nb",
+                                    ifelse(gender=="not listed", "trans and/or nb",
+                                           ifelse(gender=="trans man", "trans and/or nb",
+                                                  ifelse(gender=="trans woman", "trans and/or nb", paste(gender))))))) %>% 
+  relocate(gender_agg, .after = gender) %>% 
+  mutate(gender_agg=as.factor(gender_agg))
+
+EDsim %>% 
+  ggboxplot(x = "gender_agg", y = "edeq_global", 
+          color = "gender_agg", palette = c("#00AFBB", "#E7B800", "#FC4E07")) +
+  geom_jitter(aes(color = gender_agg))+
+  theme(legend.position = "none") # look about the same
+
+# based on these plots, I'm expecting null results. However, let's walk through the steps
+```
+
+# one way anova
+```{r}
+# Compute the analysis of variance
+res.aov <- aov(edeq_global ~ gender_agg, data = EDsim)
+# Summary of the analysis
+summary(res.aov)
+
+# calculate effect size 
+eta_squared(res.aov) # partial eta squared = .003
+
+# we fail to reject the null
+# F(2,257) = 0.39, p = .766
+
+# if you had a sig results, you could do a Tukey post hoc test
+TukeyHSD(res.aov)
+```
+
+below is unnecessary. just writing to knit.
+
+*F*(`r summary(res.aov)[[1]][1, "Df"`; `r summary(res.aov)[[1]][2, "Df"`) = `r format(summary(res.aov)[[1]][1, "F value"], digits = 2, nsmall = 2)`, \eta_{p}^{2} = `r round(eta_squared(res.aov)[[2]], digits = 3)`
+
+# Assumptions
+
+We got a feel for some assumptions, like the distribution and outliers, but it's better to quantify them rather than rely on visuals alone. However, we do want to visualize our data because it's easier to make sense of numbers and it can help us make informed decisions on which model is appropriate etc. 
+
+## homogeneity of variance
+
+Here we are plotting the residuals versus the fitted model. You are looking for no evident relationship between residuals and fitted values
+```{r}
+plot(res.aov, 1) # looks good
+
+# let's also quantify this with Levene's test
+EDsim %>% 
+  levene_test(edeq_global~gender_agg) # 0.05, p = .948. no relationship. homogeneity of variance met
+```
+## Normality
+
+Here we are plotting the residuals against the quartiles of a normal distribution. In this plot, we are hoping the points follow a line
+```{r}
+plot(res.aov, 2) # mostly follows the line. 
+
+# we can follow this up with a shapiro wilk's test or K-S test
+EDsim %>% 
+  shapiro_test(edeq_global) # p = .003 hm so not normally distributed
+
+ggqqplot(EDsim, "edeq_global", facet.by = "gender_agg") # alright so we're getting some s-shape, especially for cis men
+
+```
+
+## univariate outliers
+```{r}
+EDsim %>%
+  group_by(gender_agg) %>%
+  identify_outliers(edeq_global) # 5 outliers, none extreme
+
+index <- EDsim %>% 
+  group_by(gender_agg) %>%
+  identify_outliers(edeq_global)
+
+# remove the outlier and extreme cols
+index <- index %>% select(-c(is.outlier, is.extreme))
+
+EDsim_noout <- EDsim[which(!EDsim$start %in% index$start),]
+
+# run without outliers
+# Compute the analysis of variance
+res.aov_noout <- aov(edeq_global ~ gender_agg, data = EDsim_noout)
+# Summary of the analysis
+summary(res.aov_noout)
+
+# calculate effect size 
+eta_squared(res.aov_noout) 
+
+# we fail to reject the null
+
+# if you had a sig results, you could do a Tukey post hoc test
+TukeyHSD(res.aov_noout)
+
+EDsim_noout %>% 
+  shapiro_test(edeq_global) # p = .01
+```
+

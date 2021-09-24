@@ -18,14 +18,11 @@ The hashtag I use before "packages" above is to use the outline feature of RStud
 
 Before we get started, let's just make sure we all have the same packages. We're focusing on tidyverse, but I generally upload all of these at once with every markdown because I frequently use them all together.  
 
-If you do not have a package, install them in your console using `>install.packages("nameofpackage")`  
-Then come back up to this code chunk and upload them.
-
 ```{r message=FALSE, warning=FALSE}
 # update.packages("tidyverse") # tidyverse changes all the time. make sure you have the most recent version
-library(tidyverse) # for life, for data cleaning. This is a suite that includes packages like dplyr (manipulate data), purrrr (for functions and datasets--sometimes faster/better than apply/sappy), forcats (categorical variables), ggplot2 (that good good vis), lubridate (dates and time variables), etc.
-library(psych) # for the describe() function. It's like a better version of base R's summary. I use this for checking values of variables.
-library(sjmisc) # to move multiple columns at once. you'll notice places i use dplyr::relocate vs sjmisc::move_columns. However, they essentially do the same thing
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")} # for life, for data cleaning. This is a suite that includes packages like dplyr (manipulate data), purrrr (for functions and datasets--sometimes faster/better than apply/sappy), forcats (categorical variables), ggplot2 (that good good vis), lubridate (dates and time variables), etc.
+if (!require("psych")) {install.packages("psych"); require("psych")} # for the describe() function. It's like a better version of base R's summary. I use this for checking values of variables.
+if (!require("sjmisc")) {install.packages("sjmisc"); require("sjmisc")} # to move multiple columns at once. you'll notice places i use dplyr::relocate vs sjmisc::move_columns. However, they essentially do the same thing
 ```
 
 <figure align = "left">
@@ -87,7 +84,7 @@ Reminder: TidyVerse is super active and developing daily. USE THE MOST RECENT. f
 
 Let's start with select. Select finds columns. We usually have really wide datasets because our participants complete lots of measures. You may just want to look at a few at a time. We can select the variables we care about.
 ```{r}
-# So on line 64, we took a look at our data. What if you just wanted to get an idea of what panas data look like
+# So we used `head()`, we took a look at our data. What if you just wanted to get an idea of what panas data look like
 
 PDB_SR %>% # look our first pipe! We're piping in PDB_SR into the function select
   select(starts_with("panas"))
@@ -96,7 +93,7 @@ PDB_SR %>% # look our first pipe! We're piping in PDB_SR into the function selec
 select(PDB_SR, starts_with("panas")) # while this doesn't look much different than the first way, when your code gets more complicated or when you're using ggplot, it comes in handy. Trust me on this/we'll see shortly when we combine functions.
 
 # so you could also do this with regular expressions as seen below
-PDB_SR[, grep("^panas", colnames(PDB_SR))] # so lines 98-105 do the same thing, but the first one is much easier to read and more flexible. This is a reason we like tidyverse. Happy to speak further on why you would want to use regular expressions approach instead of tidyverse
+PDB_SR[, grep("^panas", colnames(PDB_SR))] # so lines 89-96 do the same thing, but the first one is much easier to read. This is a reason we like tidyverse. Happy to speak further on why you would want to use regular expressions approach instead of tidyverse. Regular expressions, or regex, is more flexible and can be very useful in complex character strings.
 ```
 
 ### Exercise 1: select the ders columns
