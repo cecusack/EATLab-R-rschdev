@@ -19,10 +19,15 @@ The hashtag I use before "packages" above is to use the outline feature of RStud
 Before we get started, let's just make sure we all have the same packages. We're focusing on tidyverse, but I generally upload all of these at once with every markdown because I frequently use them all together.  
 
 ```{r message=FALSE, warning=FALSE}
-# update.packages("tidyverse") # tidyverse changes all the time. make sure you have the most recent version
-if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")} # for life, for data cleaning. This is a suite that includes packages like dplyr (manipulate data), purrrr (for functions and datasets--sometimes faster/better than apply/sappy), forcats (categorical variables), ggplot2 (that good good vis), lubridate (dates and time variables), etc.
-if (!require("psych")) {install.packages("psych"); require("psych")} # for the describe() function. It's like a better version of base R's summary. I use this for checking values of variables.
-if (!require("sjmisc")) {install.packages("sjmisc"); require("sjmisc")} # to move multiple columns at once. you'll notice places i use dplyr::relocate vs sjmisc::move_columns. However, they essentially do the same thing
+# update.packages("tidyverse") # tidyverse changes all the time. make sure you have the most recent version    
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")}    
+# for life, for data cleaning. This is a suite that includes packages like dplyr (manipulate data), purrrr (for functions and datasets--sometimes faster/better than apply/sappy), forcats (categorical variables), ggplot2 (that good good vis), lubridate (dates and time variables), etc.    
+
+if (!require("psych")) {install.packages("psych"); require("psych")}    
+# for the describe() function. It's like a better version of base R's summary. I use this for checking values of variables.    
+
+if (!require("sjmisc")) {install.packages("sjmisc"); require("sjmisc")}    
+# to move multiple columns at once. you'll notice places i use dplyr::relocate vs sjmisc::move_columns. However, they essentially do the same thing
 ```
 
 <figure align = "left">
