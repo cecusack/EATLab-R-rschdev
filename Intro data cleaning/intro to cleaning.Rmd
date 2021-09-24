@@ -25,12 +25,11 @@ Note: this was made to make for easy navigation using the outline feature. Click
 
 Upload the packages I need. If you do not have these packages, install them with install.packages("nameofpackage") in the console. then upload them using the library(nameofpackage) like below in the code chunk.
 ```{r}
-library(tidyverse) # for life, for data cleaning. This is a suite that includes packages like dplyr, purrrr, forcats, etc.
-library(devtools) # has dependencies needed for other packages
-library(measurements) # for fixing height
-library(psych) # for the describe() function. It's like a better version of base R's summary. I use this for checking values of variables.
-# library(lubridate) # for date/time var
-library(sjmisc) # to move multiple columns at once
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")} # for life, for data cleaning. This is a suite that includes packages like dplyr, purrrr, forcats, etc.
+if (!require("devtools")) {install.packages("devtools"); require("devtools")} # has dependencies needed for other packages
+if (!require("measurements")) {install.packages("measurements"); require("measurements")} # for fixing height
+if (!require("psych")) {install.packages("psych"); require("psych")} # for the describe() function. It's like a better version of base R's summary. I use this for checking values of variables.
+if (!require("sjmisc")) {install.packages("sjmisc"); require("sjmisc")} # to move multiple columns at once
 ```
 
 # import data
@@ -44,7 +43,7 @@ It's helpful to save the markdown you're using to clean where the data are. This
 
 raw <- read.csv("fake data.csv", header = TRUE, sep = ",", na.strings=c("", "NA", "N/A", "n/a", "N/a", "-99", -99))
 
-# How to understand line 46: the first argument is the file name. Setting header = TRUE, tells R to read the top row as a header instead of an observation/participant. The sep argument = "," is for csv so R knows how to read commas and make rows/columns. na.strings is a list of possible ways that people may write missing values. It tells R that a blank, NA, N/A, n/a, -99 are all missing data
+# How to understand line 44: the first argument is the file name. Setting header = TRUE, tells R to read the top row as a header instead of an observation/participant. The sep argument = "," is for csv so R knows how to read commas and make rows/columns. na.strings is a list of possible ways that people may write missing values. It tells R that a blank, NA, N/A, n/a, -99 are all missing data
 
 # It's good practice to leave raw data alone and make a copy of the dataframe you will be cleaning on. This is to make sure you always have your raw data in case you make mistakes. In the line below, make a direct copy of the data that you will be working on. I like to specify names as raw and clean
 
@@ -269,7 +268,8 @@ which(clean$weight == "100-105") # row number 14.
 which(colnames(clean)=="weightcheck") # column number 13
 # change this problem cell by hand
 #data.frame[row_number, column_number] = new_value
-clean[14,13] = (100+105)/2 # height is column 14
+clean[which(clean$weight == "100-105"), which(colnames(clean)=="weightcheck")] = (100+105)/2 # height is column 14
+# clean[14, 13] = (100+105)/2  # this line is less reproducible than the previous
 
 ```
 
@@ -441,7 +441,8 @@ describe(clean[,grep("^edeq6_", colnames(clean))]) # 0-6 scale for items. good.
 
 # restraint
 ## items 1, 2, 3, 4, 5
-clean$edeq6_restraint <- rowMeans(clean[,which(names(clean)=="edeq6_1"):which(names(clean)=="edeq6_5")], na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,which(names(clean)=="edeq6_1"):which(names(clean)=="edeq6_5")])) 
+clean$edeq6_restraint <- rowMeans(clean[,which(names(clean)=="edeq6_1"):which(names(clean)=="edeq6_5")], na.rm=TRUE)*NA^!rowSums(!is.na(clean[,which(names(clean)=="edeq6_1"):which(names(clean)=="edeq6_5")])) 
+# the part that begins *NA^!rowSums is saying average these cols UNLESS everything is NA
 
 # check plausible values
 describe(clean$edeq6_restraint) # min = 0, max = 6 good. mean = 1.08
@@ -449,7 +450,7 @@ describe(clean$edeq6_restraint) # min = 0, max = 6 good. mean = 1.08
 
 # eating concern
 ## items 7, 9, 19, 21, 20
-clean$edeq6_eatconcern <- rowMeans(clean[,c(which(names(clean)=="edeq6_7"), which(names(clean)=="edeq6_9"), which(names(clean)=="edeq6_19"), which(names(clean)=="edeq6_21"), which(names(clean)=="edeq6_20"))], na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c(which(names(clean)=="edeq6_7"), which(names(clean)=="edeq6_9"), which(names(clean)=="edeq6_19"), which(names(clean)=="edeq6_21"), which(names(clean)=="edeq6_20"))])) 
+clean$edeq6_eatconcern <- rowMeans(clean[,c(which(names(clean)=="edeq6_7"), which(names(clean)=="edeq6_9"), which(names(clean)=="edeq6_19"), which(names(clean)=="edeq6_21"), which(names(clean)=="edeq6_20"))], na.rm=TRUE)*NA^!rowSums(!is.na(clean[,c(which(names(clean)=="edeq6_7"), which(names(clean)=="edeq6_9"), which(names(clean)=="edeq6_19"), which(names(clean)=="edeq6_21"), which(names(clean)=="edeq6_20"))])) 
 
 # check plausible values
 describe(clean$edeq6_eatconcern) # min = 0, max = 4 good. mean = .6
@@ -457,7 +458,7 @@ describe(clean$edeq6_eatconcern) # min = 0, max = 4 good. mean = .6
 
 `# shape concern
 ## items 6, 8, 23, 10, 26, 27, 28, 11
-clean$edeq6_shapeconcern <- rowMeans(clean[,c(which(names(clean)=="edeq6_6"), which(names(clean)=="edeq6_8"), which(names(clean)=="edeq6_23"), which(names(clean)=="edeq6_10"), which(names(clean)=="edeq6_26"), which(names(clean)=="edeq6_27"), which(names(clean)=="edeq6_28"), which(names(clean)=="edeq6_11"))], na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c(which(names(clean)=="edeq6_6"), which(names(clean)=="edeq6_8"), which(names(clean)=="edeq6_23"), which(names(clean)=="edeq6_10"), which(names(clean)=="edeq6_26"), which(names(clean)=="edeq6_27"), which(names(clean)=="edeq6_28"), which(names(clean)=="edeq6_11"))])) 
+clean$edeq6_shapeconcern <- rowMeans(clean[,c(which(names(clean)=="edeq6_6"), which(names(clean)=="edeq6_8"), which(names(clean)=="edeq6_23"), which(names(clean)=="edeq6_10"), which(names(clean)=="edeq6_26"), which(names(clean)=="edeq6_27"), which(names(clean)=="edeq6_28"), which(names(clean)=="edeq6_11"))], na.rm=TRUE)*NA^!rowSums(!is.na(clean[,c(which(names(clean)=="edeq6_6"), which(names(clean)=="edeq6_8"), which(names(clean)=="edeq6_23"), which(names(clean)=="edeq6_10"), which(names(clean)=="edeq6_26"), which(names(clean)=="edeq6_27"), which(names(clean)=="edeq6_28"), which(names(clean)=="edeq6_11"))])) 
 
 # check plausible values
 describe(clean$edeq6_shapeconcern) # min = 0, max = 4.62 good. mean = 1.61
@@ -468,14 +469,14 @@ describe(clean$edeq6_shapeconcern) # min = 0, max = 4.62 good. mean = 1.61
 ```{r}
 # weight concern
 ## items 22, 24, 8, 25, 12
-clean$edeq6_weightconcern <- rowMeans(clean[,c(which(names(clean)=="edeq6_22"), which(names(clean)=="edeq6_24"), which(names(clean)=="edeq6_8"), which(names(clean)=="edeq6_25"), which(names(clean)=="edeq6_12"))], na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c(which(names(clean)=="edeq6_22"), which(names(clean)=="edeq6_24"), which(names(clean)=="edeq6_8"), which(names(clean)=="edeq6_25"), which(names(clean)=="edeq6_12"))])) 
+clean$edeq6_weightconcern <- rowMeans(clean[,c(which(names(clean)=="edeq6_22"), which(names(clean)=="edeq6_24"), which(names(clean)=="edeq6_8"), which(names(clean)=="edeq6_25"), which(names(clean)=="edeq6_12"))], na.rm=TRUE)*NA^!rowSums(!is.na(clean[,c(which(names(clean)=="edeq6_22"), which(names(clean)=="edeq6_24"), which(names(clean)=="edeq6_8"), which(names(clean)=="edeq6_25"), which(names(clean)=="edeq6_12"))])) 
 
 # check plausible values
 describe(clean$edeq6_weightconcern) # min = 0, max = 5.6 good. mean = 1.62
 
 
 # global
-clean$edeq6_global <- rowMeans(clean[,c(which(names(clean)=="edeq6_restraint"), which(names(clean)=="edeq6_eatconcern"), which(names(clean)=="edeq6_shapeconcern"), which(names(clean)=="edeq6_weightconcern"))], na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c(which(names(clean)=="edeq6_restraint"), which(names(clean)=="edeq6_eatconcern"), which(names(clean)=="edeq6_shapeconcern"), which(names(clean)=="edeq6_weightconcern"))])) 
+clean$edeq6_global <- rowMeans(clean[,c(which(names(clean)=="edeq6_restraint"), which(names(clean)=="edeq6_eatconcern"), which(names(clean)=="edeq6_shapeconcern"), which(names(clean)=="edeq6_weightconcern"))], na.rm=TRUE)*NA^!rowSums(!is.na(clean[,c(which(names(clean)=="edeq6_restraint"), which(names(clean)=="edeq6_eatconcern"), which(names(clean)=="edeq6_shapeconcern"), which(names(clean)=="edeq6_weightconcern"))])) 
 
 # check plausible values
 describe(clean$edeq6_global) # min = 0, max = 4.44 good. mean = 1.23
@@ -549,28 +550,28 @@ clean <- clean %>%
 ```{r}
 # Subscales:
 # Noticing: 1, 2, 3, 4
-clean$maia_notice <- rowMeans(sapply(clean[,c("maia_adol_1", "maia_adol_2", "maia_adol_3", "maia_adol_4")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_1", "maia_adol_2", "maia_adol_3", "maia_adol_4")]))
+clean$maia_notice <- rowMeans(sapply(clean[,c("maia_adol_1", "maia_adol_2", "maia_adol_3", "maia_adol_4")], as.numeric), na.rm=TRUE)*NA^!rowSums(!is.na(clean[,c("maia_adol_1", "maia_adol_2", "maia_adol_3", "maia_adol_4")]))
 
 # Not-distracting: 5(R), 6(R), 7(R)
-clean$maia_nondistract <- rowMeans(sapply(clean[,c("maia_adol_5r", "maia_adol_6r", "maia_adol_7r")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_5r", "maia_adol_6r", "maia_adol_7r")]))
+clean$maia_nondistract <- rowMeans(sapply(clean[,c("maia_adol_5r", "maia_adol_6r", "maia_adol_7r")], as.numeric), na.rm=TRUE)*NA^!rowSums(!is.na(clean[,c("maia_adol_5r", "maia_adol_6r", "maia_adol_7r")]))
 
 # Not-worrying: 8(R), 9(R), 10
-clean$maia_nonworry <- rowMeans(sapply(clean[,c("maia_adol_8r", "maia_adol_9r", "maia_adol_10")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_8r", "maia_adol_9r", "maia_adol_10")]))
+clean$maia_nonworry <- rowMeans(sapply(clean[,c("maia_adol_8r", "maia_adol_9r", "maia_adol_10")], as.numeric), na.rm=TRUE)*NA^!rowSums(!is.na(clean[,c("maia_adol_8r", "maia_adol_9r", "maia_adol_10")]))
 
 # Attention regulation: 11-17
-clean$maia_attn <- rowMeans(sapply(clean[,c("maia_adol_11", "maia_adol_12", "maia_adol_13", "maia_adol_14", "maia_adol_15", "maia_adol_16", "maia_adol_17")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_11", "maia_adol_12", "maia_adol_13", "maia_adol_14", "maia_adol_15", "maia_adol_16", "maia_adol_17")]))
+clean$maia_attn <- rowMeans(sapply(clean[,c("maia_adol_11", "maia_adol_12", "maia_adol_13", "maia_adol_14", "maia_adol_15", "maia_adol_16", "maia_adol_17")], as.numeric), na.rm=TRUE)*NA^!rowSums(!is.na(clean[,c("maia_adol_11", "maia_adol_12", "maia_adol_13", "maia_adol_14", "maia_adol_15", "maia_adol_16", "maia_adol_17")]))
 
 # Emotional awareness: 18:22
-clean$maia_emotion <- rowMeans(sapply(clean[,c("maia_adol_18", "maia_adol_19", "maia_adol_20", "maia_adol_22", "maia_adol_22")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_18", "maia_adol_19", "maia_adol_20", "maia_adol_22", "maia_adol_22")]))
+clean$maia_emotion <- rowMeans(sapply(clean[,c("maia_adol_18", "maia_adol_19", "maia_adol_20", "maia_adol_22", "maia_adol_22")], as.numeric), na.rm=TRUE)*NA^!rowSums(!is.na(clean[,c("maia_adol_18", "maia_adol_19", "maia_adol_20", "maia_adol_22", "maia_adol_22")]))
 
 # Self-regulation: 23-26
-clean$maia_selfreg <- rowMeans(sapply(clean[,c("maia_adol_23", "maia_adol_24", "maia_adol_25", "maia_adol_26")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_23", "maia_adol_24", "maia_adol_25", "maia_adol_26")]))
+clean$maia_selfreg <- rowMeans(sapply(clean[,c("maia_adol_23", "maia_adol_24", "maia_adol_25", "maia_adol_26")], as.numeric), na.rm=TRUE)*NA^!rowSums(!is.na(clean[,c("maia_adol_23", "maia_adol_24", "maia_adol_25", "maia_adol_26")]))
 
 # Body listening: 27-29
-clean$maia_body <- rowMeans(sapply(clean[,c("maia_adol_27", "maia_adol_28", "maia_adol_29")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_27", "maia_adol_28", "maia_adol_29")]))
+clean$maia_body <- rowMeans(sapply(clean[,c("maia_adol_27", "maia_adol_28", "maia_adol_29")], as.numeric), na.rm=TRUE)*NA^!rowSums(!is.na(clean[,c("maia_adol_27", "maia_adol_28", "maia_adol_29")]))
 
 # Trusting: 30-32
-clean$maia_trust <- rowMeans(sapply(clean[,c("maia_adol_30", "maia_adol_31", "maia_adol_32")], as.numeric), na.rm=TRUE)*NA^!rowMeans(!is.na(clean[,c("maia_adol_30", "maia_adol_31", "maia_adol_32")]))
+clean$maia_trust <- rowMeans(sapply(clean[,c("maia_adol_30", "maia_adol_31", "maia_adol_32")], as.numeric), na.rm=TRUE)*NA^!rowSums(!is.na(clean[,c("maia_adol_30", "maia_adol_31", "maia_adol_32")]))
 
 # there's a NaN instead of NA. let's fix this
 is.nan.data.frame <- function(x)
